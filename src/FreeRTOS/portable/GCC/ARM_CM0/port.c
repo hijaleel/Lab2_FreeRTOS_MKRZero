@@ -374,16 +374,19 @@ void xPortSysTickHandler( void )
 {
     uint32_t ulPreviousMask;
 
-    ulPreviousMask = portSET_INTERRUPT_MASK_FROM_ISR();
+    if( xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED )
     {
-        /* Increment the RTOS tick. */
-        if( xTaskIncrementTick() != pdFALSE )
+        ulPreviousMask = portSET_INTERRUPT_MASK_FROM_ISR();
         {
-            /* Pend a context switch. */
-            portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
+            /* Increment the RTOS tick. */
+            if( xTaskIncrementTick() != pdFALSE )
+            {
+                /* Pend a context switch. */
+                portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
+            }
         }
+        portCLEAR_INTERRUPT_MASK_FROM_ISR( ulPreviousMask );
     }
-    portCLEAR_INTERRUPT_MASK_FROM_ISR( ulPreviousMask );
 }
 /*-----------------------------------------------------------*/
 

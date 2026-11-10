@@ -25,20 +25,14 @@
 /* Hardware Pin Definitions (ATSAMD21G18A on Arduino MKR Zero)                */
 /* - Digital Pin 1 on MKR Zero header maps to PORTA Pin 23 (PA23)             */
 /* - Builtin onboard LED (labeled "L") maps to PORTB Pin 8 (PB08)             */
-/* We drive BOTH so you can see it blink on Pin 1 AND on the onboard LED!     */
+/* Both are driven together so the blink is visible on Pin 1 and onboard LED. */
 /* -------------------------------------------------------------------------- */
-#define PIN1_MASK           PORT_PA23        /* Pin 1 = PA23 (1UL << 23) */
-#define ONBOARD_LED_MASK    (1UL << 8)       /* Builtin LED = PB08 */
+#define PIN1_MASK           PORT_PA23        /* Header Pin 1 = PA23 (1UL << 23) */
+#define ONBOARD_LED_MASK    (1UL << 8)       /* Built-in LED = PB08 */
 
 /* -------------------------------------------------------------------------- */
 /* Task Priorities (Each task has its own distinct priority via const int)    */
 /* -------------------------------------------------------------------------- */
-/*
- * Priority Structure:
- * - PRIORITY_TASK_LED_OFF (3): Highest priority.
- * - PRIORITY_TASK_SERIAL  (2): Medium priority.
- * - PRIORITY_TASK_LED_ON  (1): Lowest priority.
- */
 const int PRIORITY_TASK_LED_OFF = 3;
 const int PRIORITY_TASK_SERIAL  = 2;
 const int PRIORITY_TASK_LED_ON  = 1;
@@ -66,11 +60,11 @@ TaskHandle_t xHandleTaskSerial  = NULL;
  * @brief Configure Pin 1 (PA23) and Onboard LED (PB08) as digital outputs.
  */
 static void gpio_init(void) {
-    /* Set Pin 1 (PA23, PORTA) as output */
+    /* Configure Pin 1 (PA23, Group 0 = PORTA) as output */
     PORT->Group[0].DIRSET.reg = PIN1_MASK;
     PORT->Group[0].OUTCLR.reg = PIN1_MASK;
 
-    /* Set Onboard LED (PB08, PORTB) as output */
+    /* Configure Onboard LED (PB08, Group 1 = PORTB) as output */
     PORT->Group[1].DIRSET.reg = ONBOARD_LED_MASK;
     PORT->Group[1].OUTCLR.reg = ONBOARD_LED_MASK;
 }
@@ -99,25 +93,62 @@ static inline bool gpio_led_is_on(void) {
 }
 
 /**
- * @brief Initialize SERCOM5 for Serial UART output.
+ * @brief Initialize SERCOM5 for Serial UART output on PB22 (TX, PAD[2]) / PB23 (RX, PAD[3]).
  */
 static void uart_init(uint32_t baudrate) {
-    (void)baudrate;
-    /* Enable APBC clock for SERCOM5 */
+    uint32_t timeout;
+
+    /* 1. Enable APBC peripheral clock for SERCOM5 */
     PM->APBCMASK.reg |= PM_APBCMASK_SERCOM5;
+
+    /* 2. Route GCLK Generator 0 (48 MHz) to SERCOM5 core */
+    GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(SERCOM5_GCLK_ID_CORE) |
+                        GCLK_CLKCTRL_GEN_GCLK0 |
+                        GCLK_CLKCTRL_CLKEN;
+    timeout = 50000;
+    while (GCLK->STATUS.bit.SYNCBUSY && --timeout);
+
+    /* 3. Multiplex PB22 (TX) and PB23 (RX) to Peripheral D (SERCOM-ALT) */
+    PORT->Group[1].PINCFG[22].bit.PMUXEN = 1;
+    PORT->Group[1].PINCFG[23].bit.PMUXEN = 1;
+    PORT->Group[1].PMUX[22 >> 1].reg = PORT_PMUX_PMUXE_D | PORT_PMUX_PMUXO_D;
+
+    /* 4. Software Reset SERCOM5 */
+    SERCOM5->USART.CTRLA.bit.SWRST = 1;
+    timeout = 50000;
+    while ((SERCOM5->USART.CTRLA.bit.SWRST || SERCOM5->USART.SYNCBUSY.bit.SWRST) && --timeout);
+
+    /* 5. Configure USART mode: internal clock, LSB first, TX=PAD[2] (TXPO=1), RX=PAD[3] (RXPO=3) */
+    SERCOM5->USART.CTRLA.reg = SERCOM_USART_CTRLA_MODE_USART_INT_CLK |
+                               SERCOM_USART_CTRLA_DORD |
+                               SERCOM_USART_CTRLA_TXPO(1) |
+                               SERCOM_USART_CTRLA_RXPO(3);
+
+    /* 6. Calculate baud rate register for 48 MHz reference clock */
+    uint64_t baud_reg = 65536ULL - ((65536ULL * 16ULL * (uint64_t)baudrate) / 48000000ULL);
+    SERCOM5->USART.BAUD.reg = (uint16_t)baud_reg;
+
+    /* 7. Enable Transmitter and Receiver */
+    SERCOM5->USART.CTRLB.reg = SERCOM_USART_CTRLB_TXEN | SERCOM_USART_CTRLB_RXEN;
+    timeout = 50000;
+    while (SERCOM5->USART.SYNCBUSY.bit.CTRLB && --timeout);
+
+    /* 8. Enable SERCOM5 peripheral */
+    SERCOM5->USART.CTRLA.bit.ENABLE = 1;
+    timeout = 50000;
+    while (SERCOM5->USART.SYNCBUSY.bit.ENABLE && --timeout);
 }
 
 /**
  * @brief Send a single character over Serial UART.
  */
 static void uart_putc(char c) {
-    /* If SERCOM5 is enabled, transmit; otherwise non-blocking */
-    if (SERCOM5->USART.CTRLA.bit.ENABLE) {
-        uint32_t timeout = 5000;
-        while (!(SERCOM5->USART.INTFLAG.reg & SERCOM_USART_INTFLAG_DRE) && --timeout);
-        if (timeout > 0) {
-            SERCOM5->USART.DATA.reg = (uint16_t)c;
-        }
+    uint32_t timeout = 50000;
+    while (!(SERCOM5->USART.INTFLAG.reg & SERCOM_USART_INTFLAG_DRE) && --timeout) {
+        /* Wait for Data Register Empty */
+    }
+    if (timeout > 0) {
+        SERCOM5->USART.DATA.reg = (uint16_t)c;
     }
 }
 
@@ -174,15 +205,15 @@ void vTaskLedOff(void *pvParameters) {
             /* Turn Pin 1 OFF (PA23 LOW) and Onboard LED OFF */
             gpio_led_off();
 
-            /* Hold mutex and delay for 1.0s (1000 ms) so the LED stays visibly OFF */
+            /* Task-delay for 1.0s (1000 ms) while keeping the LED OFF */
             vTaskDelay(pdMS_TO_TICKS(1000));
 
             /* Release mutex after the 1.0s OFF period */
             xSemaphoreGive(xLedMutex);
         }
 
-        /* Small delay to allow Task 1 to acquire mutex and turn LED ON */
-        vTaskDelay(pdMS_TO_TICKS(10));
+        /* Brief block so lower-priority vTaskLedOn can take the mutex */
+        vTaskDelay(1);
     }
 }
 
@@ -262,10 +293,18 @@ void app_init(void) {
     for (;;);
 }
 
-/* Hook into Arduino SAMD cortex_handlers.c to route SysTick to FreeRTOS */
+/*
+ * Hook into Arduino SAMD cortex_handlers.c SysTick_Handler.
+ * CRITICAL: Must check xTaskGetSchedulerState() first because Arduino's
+ * main() enables SysTick and calls delay(1) BEFORE setup() / vTaskStartScheduler()
+ * is ever reached! Calling xPortSysTickHandler() before the scheduler is started
+ * dereferences NULL task lists and pends PendSV with PSP=0, causing a HardFault.
+ */
 extern void xPortSysTickHandler(void);
 int sysTickHook(void) {
-    xPortSysTickHandler();
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+        xPortSysTickHandler();
+    }
     return 0;
 }
 
