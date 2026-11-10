@@ -287,6 +287,13 @@ void app_init(void) {
     for (;;);
 }
 
+/* Hook into Arduino SAMD cortex_handlers.c to route SysTick to FreeRTOS */
+extern void xPortSysTickHandler(void);
+int sysTickHook(void) {
+    xPortSysTickHandler();
+    return 0;
+}
+
 /* Compatible entry point for both bare-metal CMSIS and framework environments */
 #ifndef ARDUINO
 int main(void) {

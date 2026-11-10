@@ -33,7 +33,7 @@
 
 /* Memory Allocation */
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-#define configSUPPORT_STATIC_ALLOCATION         1
+#define configSUPPORT_STATIC_ALLOCATION         0
 
 /* Software Timers */
 #define configUSE_TIMERS                        0
@@ -60,6 +60,9 @@ to exclude the API function. */
 /* Map FreeRTOS port interrupt handlers to CMSIS standard vector names */
 #define vPortSVCHandler                         SVC_Handler
 #define xPortPendSVHandler                      PendSV_Handler
-#define xPortSysTickHandler                     SysTick_Handler
+/* Note: SysTick_Handler is a strong symbol in Arduino SAMD cortex_handlers.c,
+ * which calls the weak sysTickHook(). FreeRTOS SysTick handler is dispatched
+ * via sysTickHook() in main.c to prevent multiple definition linker errors. */
+/* #define xPortSysTickHandler                  SysTick_Handler */
 
 #endif /* FREERTOS_CONFIG_H */
