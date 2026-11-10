@@ -5,14 +5,7 @@
 **Shared Resource:** Digital Pin 1 (`PORT_PA23`) + Onboard LED (`PB08`) managed by FreeRTOS synchronization primitive  
 
 ---
-
-## 1. Visual GPIO Pin 1 (`PA23`) Oscilloscope & Timing Traces
-
-![GPIO Pin 1 Oscilloscope Timing Traces](./gpio_pin1_oscilloscope_traces.svg)
-
----
-
-## 2. Experimental Configurations Tested
+## 1. Experimental Configurations Tested
 
 | Configuration | Preemption (`configUSE_PREEMPTION`) | Sync Primitive | Task Priorities (`const int`) | Observed LED (`PA23`) Behavior | Observed UART (`Task 3`) Behavior |
 | :--- | :---: | :---: | :---: | :--- | :--- |
@@ -24,7 +17,7 @@
 
 ---
 
-## 3. Real Hardware Serial UART Captures (Recorded on MKR Zero `COM9`)
+## 2. Real Hardware Serial UART Captures (Recorded on MKR Zero `COM9`)
 
 ### Baseline: All Three Tasks at the SAME Priority (`1, 1, 1`) — Run to Completion (`configUSE_PREEMPTION = 0`)
 * **Evidence File:** [`case0_same_priority_rtc_uart.txt`](./case0_same_priority_rtc_uart.txt)
