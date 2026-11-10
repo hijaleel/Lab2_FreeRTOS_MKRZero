@@ -1,5 +1,5 @@
 /*
- * FreeRTOS V10.x Configuration for ATSAMD21G18A (Arduino MKR Zero)
+ * FreeRTOS V10.5.1 Configuration for ATSAMD21G18A (Arduino MKR Zero)
  * Architecture: ARM Cortex-M0+ (ARMv6-M)
  * Compiler: GCC
  */
@@ -9,11 +9,31 @@
 
 #include <stdint.h>
 
+/*
+ * SCHEDULER_CASE selects the scheduler configuration for Lab 2:
+ *   0: Same Priority (1, 1, 1) - Run to Completion (configUSE_PREEMPTION = 0)
+ *   1: Case (a) Task1=3, Task2=2, Task3=1 - Run to Completion (configUSE_PREEMPTION = 0)
+ *   2: Case (b) No Priority Inheritance (configUSE_PREEMPTION = 1, Binary Semaphore)
+ *   3: Case (c) Priority Inheritance Enabled (configUSE_PREEMPTION = 1, Mutex)
+ *   4: Case (b-inv) Priority Inversion Demo (Preemptive, Binary Semaphore, No Inheritance)
+ *   5: Case (c-inh) Priority Inheritance Demo (Preemptive, Mutex, Inheritance Enabled)
+ */
+#ifndef SCHEDULER_CASE
+#define SCHEDULER_CASE 5
+#endif
+
 /*-----------------------------------------------------------
  * Application specific definitions.
  *----------------------------------------------------------*/
 
-#define configUSE_PREEMPTION                    1
+#if (SCHEDULER_CASE == 0) || (SCHEDULER_CASE == 1)
+    #define configUSE_PREEMPTION                0   /* Run to completion (cooperative) */
+    #define configUSE_TIME_SLICING              0
+#else
+    #define configUSE_PREEMPTION                1   /* Preemptive scheduler */
+    #define configUSE_TIME_SLICING              1
+#endif
+
 #define configUSE_IDLE_HOOK                     0
 #define configUSE_TICK_HOOK                     0
 #define configCPU_CLOCK_HZ                      ( ( unsigned long ) 48000000 ) /* SAMD21 runs at 48 MHz */
@@ -27,7 +47,7 @@
 #define configIDLE_SHOULD_YIELD                 1
 
 /* Mutexes and Synchronization */
-#define configUSE_MUTEXES                       1   /* REQUIRED: Enables xSemaphoreCreateMutex() */
+#define configUSE_MUTEXES                       1   /* Enables xSemaphoreCreateMutex() & Priority Inheritance */
 #define configUSE_RECURSIVE_MUTEXES             1
 #define configUSE_COUNTING_SEMAPHORES           1
 
@@ -42,27 +62,22 @@
 #define configTIMER_TASK_STACK_DEPTH            ( configMINIMAL_STACK_SIZE * 2 )
 
 /* Cortex-M0/M0+ Specific interrupt configuration */
-#define configKERNEL_INTERRUPT_PRIORITY         ( 3 ) /* Lowest priority on Cortex-M0 (values 0-3) */
+#define configKERNEL_INTERRUPT_PRIORITY         ( 3 )
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY    ( 1 )
 
-/* Set the following definitions to 1 to include the API function, or zero
-to exclude the API function. */
+/* Optional API functions included */
 #define INCLUDE_vTaskPrioritySet                1
 #define INCLUDE_uxTaskPriorityGet               1
 #define INCLUDE_vTaskDelete                     1
 #define INCLUDE_vTaskCleanUpResources           0
 #define INCLUDE_vTaskSuspend                    1
 #define INCLUDE_vTaskDelayUntil                 1
-#define INCLUDE_vTaskDelay                      1   /* REQUIRED: Enables vTaskDelay() */
+#define INCLUDE_vTaskDelay                      1
 #define INCLUDE_xTaskGetSchedulerState          1
 #define INCLUDE_xTaskGetCurrentTaskHandle       1
 
 /* Map FreeRTOS port interrupt handlers to CMSIS standard vector names */
 #define vPortSVCHandler                         SVC_Handler
 #define xPortPendSVHandler                      PendSV_Handler
-/* Note: SysTick_Handler is a strong symbol in Arduino SAMD cortex_handlers.c,
- * which calls the weak sysTickHook(). FreeRTOS SysTick handler is dispatched
- * via sysTickHook() in main.c to prevent multiple definition linker errors. */
-/* #define xPortSysTickHandler                  SysTick_Handler */
 
 #endif /* FREERTOS_CONFIG_H */

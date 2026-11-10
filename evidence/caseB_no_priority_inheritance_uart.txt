@@ -1,0 +1,18 @@
+=== REAL HARDWARE UART CAPTURE (ATSAMD21G18A / MKR Zero on COM9) ===
+Configuration: CASE (b) - No Priority Inheritance (Preemptive=1, Binary Semaphore)
+----------------------------------------------------------------------------------------------------
+[t=100535 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=66, T2=66, T3=100) | Pin1=ON
+[t=101009 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=66, T2=66, T3=101) | Pin1=ON
+[t=101045 ms] Task1_LedOn  (EffPrio=1): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=66, T2=66, T3=101) | Pin1=ON
+[t=101056 ms] Task2_LedOff (EffPrio=3): GPIO Pin 1 -> OFF (task-delay 1000ms) | Counts(T1=66, T2=67, T3=101) | Pin1=OFF
+[t=102019 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=66, T2=67, T3=102) | Pin1=OFF
+[t=102066 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=67, T2=67, T3=102) | Pin1=ON
+[t=102576 ms] Task1_LedOn  (EffPrio=1): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=67, T2=67, T3=102) | Pin1=ON
+[t=102587 ms] Task2_LedOff (EffPrio=3): GPIO Pin 1 -> OFF (task-delay 1000ms) | Counts(T1=67, T2=68, T3=102) | Pin1=OFF
+[t=103029 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=67, T2=68, T3=103) | Pin1=OFF
+[t=103597 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=68, T2=68, T3=103) | Pin1=ON
+[t=104039 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=68, T2=68, T3=104) | Pin1=ON
+[t=104107 ms] Task1_LedOn  (EffPrio=1): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=68, T2=68, T3=104) | Pin1=ON
+[t=104118 ms] Task2_LedOff (EffPrio=3): GPIO Pin 1 -> OFF (task-delay 1000ms) | Counts(T1=68, T2=69, T3=104) | Pin1=OFF
+[t=105049 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=68, T2=69, T3=105) | Pin1=OFF
+[t=105128 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=69, T2=69, T3=105) | Pin1=ON

@@ -1,0 +1,17 @@
+=== REAL HARDWARE UART CAPTURE (ATSAMD21G18A / MKR Zero on COM9) ===
+Configuration: CASE (a) - Task 1 Highest (3), Task 2 (2), Task 3 (1), Run to Completion (configUSE_PREEMPTION = 0)
+----------------------------------------------------------------------------------------------------
+[t=40607 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=78, T2=0, T3=0) | Pin1=ON
+[t=40618 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=79, T2=0, T3=0) | Pin1=ON
+[t=41128 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=79, T2=0, T3=0) | Pin1=ON
+[t=41139 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=80, T2=0, T3=0) | Pin1=ON
+[t=41649 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=80, T2=0, T3=0) | Pin1=ON
+[t=41660 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=81, T2=0, T3=0) | Pin1=ON
+[t=42170 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=81, T2=0, T3=0) | Pin1=ON
+[t=42181 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=82, T2=0, T3=0) | Pin1=ON
+[t=42691 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=82, T2=0, T3=0) | Pin1=ON
+[t=42702 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=83, T2=0, T3=0) | Pin1=ON
+[t=43212 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=83, T2=0, T3=0) | Pin1=ON
+[t=43223 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=84, T2=0, T3=0) | Pin1=ON
+[t=43733 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=84, T2=0, T3=0) | Pin1=ON
+[t=43744 ms] Task1_LedOn  (EffPrio=3): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=85, T2=0, T3=0) | Pin1=ON

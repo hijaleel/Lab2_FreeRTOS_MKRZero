@@ -1,0 +1,16 @@
+=== REAL HARDWARE UART CAPTURE (ATSAMD21G18A / MKR Zero on COM9) ===
+Configuration: CASE (c) - Priority Inheritance Enabled (Preemptive=1, FreeRTOS Mutex)
+----------------------------------------------------------------------------------------------------
+[t=34676 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=23, T2=23, T3=34) | Pin1=ON
+[t=34687 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=23, T2=23, T3=35) | Pin1=ON
+[t=35186 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=23, T2=23, T3=35) | Pin1=ON
+[t=35197 ms] Task2_LedOff (EffPrio=3): GPIO Pin 1 -> OFF (task-delay 1000ms) | Counts(T1=23, T2=24, T3=35) | Pin1=OFF
+[t=35697 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=23, T2=24, T3=36) | Pin1=OFF
+[t=36207 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=24, T2=24, T3=36) | Pin1=ON
+[t=36717 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=24, T2=24, T3=36) | Pin1=ON
+[t=36728 ms] Task2_LedOff (EffPrio=3): GPIO Pin 1 -> OFF (task-delay 1000ms) | Counts(T1=24, T2=25, T3=36) | Pin1=OFF
+[t=36738 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=24, T2=25, T3=37) | Pin1=OFF
+[t=37738 ms] Task1_LedOn  (EffPrio=1): GPIO Pin 1 -> ON  (active wait 500ms) | Counts(T1=25, T2=25, T3=37) | Pin1=ON
+[t=37749 ms] Task3_Serial (EffPrio=2): UART Status Heartbeat (task-delay 1000ms) | Counts(T1=25, T2=25, T3=38) | Pin1=ON
+[t=38248 ms] Task1_LedOn  (EffPrio=3): 500ms active wait done -> Give mutex & taskYIELD() | Counts(T1=25, T2=25, T3=38) | Pin1=ON
+[t=38259 ms] Task2_LedOff (EffPrio=3): GPIO Pin 1 -> OFF (task-delay 1000ms) | Counts(T1=25, T2=26, T3=38) | Pin1=OFF

@@ -3,18 +3,20 @@
  * Lab 2: FreeRTOS on ATSAMD21G18A (Arduino MKR Zero / ARM Cortex-M0+)
  * Using pure CMSIS ("sam.h") without Arduino.h
  *
- * Requirements:
- * - 3 FreeRTOS tasks, each with its own distinct priority level (const int).
- * - 1 FreeRTOS Mutex managing access to a shared GPIO pin (Pin 1 = PA23).
- * - Task 1 (LedOn): Turns Pin 1 ON, actively waits for 0.5s, yields.
- * - Task 2 (LedOff): Turns Pin 1 OFF, task-delays for 1.0s.
- * - Task 3 (SerialStatus): Transmits status message via Serial UART, task-delays for 1.0s.
+ * Individual Part - Task Performance & Scheduler Configuration Exploration:
+ *   SCHEDULER_CASE 0: Same Priority (1, 1, 1) - Run to Completion (Preemption=0)
+ *   SCHEDULER_CASE 1: Case (a) Task1=3, Task2=2, Task3=1 - Run to Completion (Preemption=0)
+ *   SCHEDULER_CASE 2: Case (b) Task1=3, Task2=2, Task3=1 - No Priority Inheritance (Binary Sem)
+ *   SCHEDULER_CASE 3: Case (c) Task1=3, Task2=2, Task3=1 - Priority Inheritance Enabled (Mutex)
+ *   SCHEDULER_CASE 4: Case (b-inv) Priority Inversion Demo (LedOff=3, Serial=2, LedOn=1, Binary Sem)
+ *   SCHEDULER_CASE 5: Case (c-inh) Priority Inheritance Demo (LedOff=3, Serial=2, LedOn=1, Mutex)
  * ============================================================================
  */
 
 #include "sam.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /* FreeRTOS Kernel Includes */
 #include "FreeRTOS.h"
@@ -22,29 +24,70 @@
 #include "semphr.h"
 
 /* -------------------------------------------------------------------------- */
+/* Select Active Test Case (0..5)                                             */
+/* Can be overridden via platformio.ini build_flags (-DSCHEDULER_CASE=...)    */
+/* -------------------------------------------------------------------------- */
+#ifndef SCHEDULER_CASE
+#define SCHEDULER_CASE 0
+#endif
+
+/* -------------------------------------------------------------------------- */
 /* Hardware Pin Definitions (ATSAMD21G18A on Arduino MKR Zero)                */
 /* - Digital Pin 1 on MKR Zero header maps to PORTA Pin 23 (PA23)             */
-/* - Builtin onboard LED (labeled "L") maps to PORTB Pin 8 (PB08)             */
-/* Both are driven together so the blink is visible on Pin 1 and onboard LED. */
+/* - Built-in onboard LED (labeled "L") maps to PORTB Pin 8 (PB08)            */
 /* -------------------------------------------------------------------------- */
 #define PIN1_MASK           PORT_PA23        /* Header Pin 1 = PA23 (1UL << 23) */
 #define ONBOARD_LED_MASK    (1UL << 8)       /* Built-in LED = PB08 */
 
 /* -------------------------------------------------------------------------- */
-/* Task Priorities (Each task has its own distinct priority via const int)    */
+/* Task Priorities (Each task has its own priority determined by a const int) */
 /* -------------------------------------------------------------------------- */
-const int PRIORITY_TASK_LED_OFF = 3;
-const int PRIORITY_TASK_SERIAL  = 2;
-const int PRIORITY_TASK_LED_ON  = 1;
+#if (SCHEDULER_CASE == 0)
+    /* Baseline: All three tasks have the SAME priority level (Run to Completion) */
+    const int PRIORITY_TASK_LED_ON  = 1;
+    const int PRIORITY_TASK_LED_OFF = 1;
+    const int PRIORITY_TASK_SERIAL  = 1;
+    #define CASE_NAME "CASE 0: Same Priority (1,1,1) - Run to Completion (configUSE_PREEMPTION=0)"
+#elif (SCHEDULER_CASE == 1)
+    /* Case (a): Task 1 Highest (3), Task 2 (2), Task 3 (1) - Run to Completion */
+    const int PRIORITY_TASK_LED_ON  = 3;
+    const int PRIORITY_TASK_LED_OFF = 2;
+    const int PRIORITY_TASK_SERIAL  = 1;
+    #define CASE_NAME "CASE (a): Task1=3, Task2=2, Task3=1 - Run to Completion (configUSE_PREEMPTION=0)"
+#elif (SCHEDULER_CASE == 2)
+    /* Case (b): Task 1 Highest (3), Task 2 (2), Task 3 (1) - No Priority Inheritance */
+    const int PRIORITY_TASK_LED_ON  = 3;
+    const int PRIORITY_TASK_LED_OFF = 2;
+    const int PRIORITY_TASK_SERIAL  = 1;
+    #define CASE_NAME "CASE (b): Task1=3, Task2=2, Task3=1 - No Priority Inheritance (Binary Semaphore)"
+#elif (SCHEDULER_CASE == 3)
+    /* Case (c): Task 1 Highest (3), Task 2 (2), Task 3 (1) - Priority Inheritance Enabled */
+    const int PRIORITY_TASK_LED_ON  = 3;
+    const int PRIORITY_TASK_LED_OFF = 2;
+    const int PRIORITY_TASK_SERIAL  = 1;
+    #define CASE_NAME "CASE (c): Task1=3, Task2=2, Task3=1 - Priority Inheritance Enabled (Mutex)"
+#elif (SCHEDULER_CASE == 4)
+    /* Case (b-inv): Blocking Task Highest (LedOff=3, Serial=2, LedOn=1) - No Priority Inheritance */
+    const int PRIORITY_TASK_LED_ON  = 1;
+    const int PRIORITY_TASK_LED_OFF = 3;
+    const int PRIORITY_TASK_SERIAL  = 2;
+    #define CASE_NAME "CASE (b-inversion): High=LedOff(3), Med=Serial(2), Low=LedOn(1) - No Priority Inheritance"
+#else
+    /* Case (c-inh): Blocking Task Highest (LedOff=3, Serial=2, LedOn=1) - Priority Inheritance Enabled */
+    const int PRIORITY_TASK_LED_ON  = 1;
+    const int PRIORITY_TASK_LED_OFF = 3;
+    const int PRIORITY_TASK_SERIAL  = 2;
+    #define CASE_NAME "CASE (c-inheritance): High=LedOff(3), Med=Serial(2), Low=LedOn(1) - Priority Inheritance Enabled"
+#endif
 
 /* -------------------------------------------------------------------------- */
 /* Task Stack Sizes (in words)                                                */
 /* -------------------------------------------------------------------------- */
-#define STACK_SIZE_LED_TASKS    ( ( configSTACK_DEPTH_TYPE ) 128 )
+#define STACK_SIZE_LED_TASKS    ( ( configSTACK_DEPTH_TYPE ) 256 )
 #define STACK_SIZE_SERIAL       ( ( configSTACK_DEPTH_TYPE ) 256 )
 
 /* -------------------------------------------------------------------------- */
-/* FreeRTOS Synchronization Handles                                           */
+/* FreeRTOS Synchronization Handles & Telemetry Counters                      */
 /* -------------------------------------------------------------------------- */
 SemaphoreHandle_t xLedMutex = NULL;
 
@@ -52,113 +95,138 @@ TaskHandle_t xHandleTaskLedOn   = NULL;
 TaskHandle_t xHandleTaskLedOff  = NULL;
 TaskHandle_t xHandleTaskSerial  = NULL;
 
+volatile uint32_t ulTask1Count = 0;
+volatile uint32_t ulTask2Count = 0;
+volatile uint32_t ulTask3Count = 0;
+
+/* -------------------------------------------------------------------------- */
+/* USB CDC Symbol Bridge (allows pure C sam.h code to also log to USB COM)    */
+/* -------------------------------------------------------------------------- */
+extern uint8_t SerialUSB[];
+extern size_t usb_cdc_write(void *this_ptr, const uint8_t *buf, size_t len) __asm__("_ZN7Serial_5writeEPKhj");
+extern bool usb_cdc_dtr(void *this_ptr) __asm__("_ZN7Serial_3dtrEv");
+
 /* -------------------------------------------------------------------------- */
 /* Low-Level GPIO & UART Helper Functions (Pure CMSIS / sam.h)                */
 /* -------------------------------------------------------------------------- */
 
-/**
- * @brief Configure Pin 1 (PA23) and Onboard LED (PB08) as digital outputs.
- */
 static void gpio_init(void) {
-    /* Configure Pin 1 (PA23, Group 0 = PORTA) as output */
+    /* Configure Pin 1 (PA23, PORTA) as output */
     PORT->Group[0].DIRSET.reg = PIN1_MASK;
     PORT->Group[0].OUTCLR.reg = PIN1_MASK;
 
-    /* Configure Onboard LED (PB08, Group 1 = PORTB) as output */
+    /* Configure Onboard LED (PB08, PORTB) as output */
     PORT->Group[1].DIRSET.reg = ONBOARD_LED_MASK;
     PORT->Group[1].OUTCLR.reg = ONBOARD_LED_MASK;
 }
 
-/**
- * @brief Drive Pin 1 (PA23) and Onboard LED (PB08) HIGH (LED ON).
- */
 static inline void gpio_led_on(void) {
     PORT->Group[0].OUTSET.reg = PIN1_MASK;
     PORT->Group[1].OUTSET.reg = ONBOARD_LED_MASK;
 }
 
-/**
- * @brief Drive Pin 1 (PA23) and Onboard LED (PB08) LOW (LED OFF).
- */
 static inline void gpio_led_off(void) {
     PORT->Group[0].OUTCLR.reg = PIN1_MASK;
     PORT->Group[1].OUTCLR.reg = ONBOARD_LED_MASK;
 }
 
-/**
- * @brief Read current output state of Pin 1 (PA23).
- */
 static inline bool gpio_led_is_on(void) {
     return (PORT->Group[0].OUT.reg & PIN1_MASK) != 0;
 }
 
 /**
- * @brief Initialize SERCOM5 for Serial UART output on PB22 (TX, PAD[2]) / PB23 (RX, PAD[3]).
+ * @brief Initialize SERCOM5 for Serial UART output on PB22 (TX) / PB23 (RX).
  */
 static void uart_init(uint32_t baudrate) {
     uint32_t timeout;
 
-    /* 1. Enable APBC peripheral clock for SERCOM5 */
     PM->APBCMASK.reg |= PM_APBCMASK_SERCOM5;
 
-    /* 2. Route GCLK Generator 0 (48 MHz) to SERCOM5 core */
     GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(SERCOM5_GCLK_ID_CORE) |
                         GCLK_CLKCTRL_GEN_GCLK0 |
                         GCLK_CLKCTRL_CLKEN;
     timeout = 50000;
     while (GCLK->STATUS.bit.SYNCBUSY && --timeout);
 
-    /* 3. Multiplex PB22 (TX) and PB23 (RX) to Peripheral D (SERCOM-ALT) */
     PORT->Group[1].PINCFG[22].bit.PMUXEN = 1;
     PORT->Group[1].PINCFG[23].bit.PMUXEN = 1;
     PORT->Group[1].PMUX[22 >> 1].reg = PORT_PMUX_PMUXE_D | PORT_PMUX_PMUXO_D;
 
-    /* 4. Software Reset SERCOM5 */
     SERCOM5->USART.CTRLA.bit.SWRST = 1;
     timeout = 50000;
     while ((SERCOM5->USART.CTRLA.bit.SWRST || SERCOM5->USART.SYNCBUSY.bit.SWRST) && --timeout);
 
-    /* 5. Configure USART mode: internal clock, LSB first, TX=PAD[2] (TXPO=1), RX=PAD[3] (RXPO=3) */
     SERCOM5->USART.CTRLA.reg = SERCOM_USART_CTRLA_MODE_USART_INT_CLK |
                                SERCOM_USART_CTRLA_DORD |
                                SERCOM_USART_CTRLA_TXPO(1) |
                                SERCOM_USART_CTRLA_RXPO(3);
 
-    /* 6. Calculate baud rate register for 48 MHz reference clock */
     uint64_t baud_reg = 65536ULL - ((65536ULL * 16ULL * (uint64_t)baudrate) / 48000000ULL);
     SERCOM5->USART.BAUD.reg = (uint16_t)baud_reg;
 
-    /* 7. Enable Transmitter and Receiver */
     SERCOM5->USART.CTRLB.reg = SERCOM_USART_CTRLB_TXEN | SERCOM_USART_CTRLB_RXEN;
     timeout = 50000;
     while (SERCOM5->USART.SYNCBUSY.bit.CTRLB && --timeout);
 
-    /* 8. Enable SERCOM5 peripheral */
     SERCOM5->USART.CTRLA.bit.ENABLE = 1;
     timeout = 50000;
     while (SERCOM5->USART.SYNCBUSY.bit.ENABLE && --timeout);
 }
 
-/**
- * @brief Send a single character over Serial UART.
- */
 static void uart_putc(char c) {
     uint32_t timeout = 50000;
-    while (!(SERCOM5->USART.INTFLAG.reg & SERCOM_USART_INTFLAG_DRE) && --timeout) {
-        /* Wait for Data Register Empty */
-    }
+    while (!(SERCOM5->USART.INTFLAG.reg & SERCOM_USART_INTFLAG_DRE) && --timeout);
     if (timeout > 0) {
         SERCOM5->USART.DATA.reg = (uint16_t)c;
     }
 }
 
-/**
- * @brief Send a null-terminated string over Serial UART.
- */
 static void uart_puts(const char *str) {
-    while (*str) {
-        uart_putc(*str++);
+    const char *p = str;
+    size_t len = 0;
+    while (*p) {
+        uart_putc(*p++);
+        len++;
     }
+    /* Mirror output to USB CDC Virtual COM port when terminal is open */
+    if (len > 0 && usb_cdc_dtr(SerialUSB)) {
+        usb_cdc_write(SerialUSB, (const uint8_t *)str, len);
+    }
+}
+
+static void uart_put_uint(uint32_t val) {
+    char buf[12];
+    int i = 11;
+    buf[i] = '\0';
+    if (val == 0) {
+        uart_puts("0");
+        return;
+    }
+    while (val > 0 && i > 0) {
+        buf[--i] = (char)('0' + (val % 10));
+        val /= 10;
+    }
+    uart_puts(&buf[i]);
+}
+
+static void log_event(const char *task_tag, const char *event_msg) {
+    UBaseType_t uxEffPrio = uxTaskPriorityGet(NULL);
+    uart_puts("[t=");
+    uart_put_uint((uint32_t)xTaskGetTickCount());
+    uart_puts(" ms] ");
+    uart_puts(task_tag);
+    uart_puts(" (EffPrio=");
+    uart_put_uint((uint32_t)uxEffPrio);
+    uart_puts("): ");
+    uart_puts(event_msg);
+    uart_puts(" | Counts(T1=");
+    uart_put_uint(ulTask1Count);
+    uart_puts(", T2=");
+    uart_put_uint(ulTask2Count);
+    uart_puts(", T3=");
+    uart_put_uint(ulTask3Count);
+    uart_puts(") | Pin1=");
+    uart_puts(gpio_led_is_on() ? "ON\r\n" : "OFF\r\n");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -172,23 +240,23 @@ void vTaskLedOn(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        /* Acquire mutex guarding the shared GPIO pin */
         if (xSemaphoreTake(xLedMutex, portMAX_DELAY) == pdTRUE) {
-            /* Turn Pin 1 ON (PA23 HIGH) and Onboard LED ON */
+            ulTask1Count++;
             gpio_led_on();
+            log_event("Task1_LedOn ", "GPIO Pin 1 -> ON  (active wait 500ms)");
 
             /* Actively wait for 0.5s (500 ms) using CPU spin loop */
             TickType_t xStartTick = xTaskGetTickCount();
             const TickType_t xWaitTicks = pdMS_TO_TICKS(500);
             while ((xTaskGetTickCount() - xStartTick) < xWaitTicks) {
-                __asm volatile("nop"); /* Active wait / CPU spin */
+                __asm volatile("nop");
             }
 
-            /* Release mutex after completing active wait */
+            log_event("Task1_LedOn ", "500ms active wait done -> Give mutex & taskYIELD()");
             xSemaphoreGive(xLedMutex);
         }
 
-        /* Yield the CPU to allow other ready tasks to execute */
+        /* Yield the CPU */
         taskYIELD();
     }
 }
@@ -200,20 +268,23 @@ void vTaskLedOff(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        /* Acquire mutex guarding the shared GPIO pin */
         if (xSemaphoreTake(xLedMutex, portMAX_DELAY) == pdTRUE) {
-            /* Turn Pin 1 OFF (PA23 LOW) and Onboard LED OFF */
+            ulTask2Count++;
             gpio_led_off();
+            log_event("Task2_LedOff", "GPIO Pin 1 -> OFF (task-delay 1000ms)");
 
             /* Task-delay for 1.0s (1000 ms) while keeping the LED OFF */
             vTaskDelay(pdMS_TO_TICKS(1000));
 
-            /* Release mutex after the 1.0s OFF period */
             xSemaphoreGive(xLedMutex);
         }
 
-        /* Brief block so lower-priority vTaskLedOn can take the mutex */
-        vTaskDelay(1);
+        /* Yield / short delay so other tasks can acquire the mutex */
+        #if (SCHEDULER_CASE == 0) || (SCHEDULER_CASE == 1)
+        taskYIELD();
+        #else
+        vTaskDelay(pdMS_TO_TICKS(100));
+        #endif
     }
 }
 
@@ -224,13 +295,8 @@ void vTaskSerialStatus(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
-        /* Print status message via Serial UART */
-        uart_puts("[FreeRTOS Status] Heartbeat | Pin 1 State: ");
-        if (gpio_led_is_on()) {
-            uart_puts("ON\r\n");
-        } else {
-            uart_puts("OFF\r\n");
-        }
+        ulTask3Count++;
+        log_event("Task3_Serial", "UART Status Heartbeat (task-delay 1000ms)");
 
         /* Block / task-delay for 1.0 second (1000 ms) */
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -241,17 +307,23 @@ void vTaskSerialStatus(void *pvParameters) {
 /* Application Entry Point                                                    */
 /* -------------------------------------------------------------------------- */
 void app_init(void) {
-    /* Initialize peripherals using pure sam.h registers */
     gpio_init();
     uart_init(115200);
 
-    uart_puts("\r\n=== FreeRTOS Lab 2: SAMD21 (sam.h) Initialized ===\r\n");
-
-    /* Create the FreeRTOS Mutex */
+    /* Create Synchronization Primitive:
+     * Cases 2 & 4 use Binary Semaphore (NO priority inheritance).
+     * Cases 0, 1, 3, & 5 use FreeRTOS Mutex (Priority Inheritance enabled). */
+#if (SCHEDULER_CASE == 2) || (SCHEDULER_CASE == 4)
+    xLedMutex = xSemaphoreCreateBinary();
+    if (xLedMutex != NULL) {
+        xSemaphoreGive(xLedMutex); /* Initialize binary semaphore to available */
+    }
+#else
     xLedMutex = xSemaphoreCreateMutex();
+#endif
 
     if (xLedMutex != NULL) {
-        /* 1. Create Task 1 (Turn LED ON, actively wait 0.5s, yield) */
+        /* Create Task 1 (Turn LED ON, actively wait 0.5s, yield) */
         xTaskCreate(
             vTaskLedOn,
             "Task_LedOn",
@@ -261,7 +333,7 @@ void app_init(void) {
             &xHandleTaskLedOn
         );
 
-        /* 2. Create Task 2 (Turn LED OFF, task-delay 1.0s) */
+        /* Create Task 2 (Turn LED OFF, task-delay 1.0s) */
         xTaskCreate(
             vTaskLedOff,
             "Task_LedOff",
@@ -271,7 +343,7 @@ void app_init(void) {
             &xHandleTaskLedOff
         );
 
-        /* 3. Create Task 3 (Serial UART Status, task-delay 1.0s) */
+        /* Create Task 3 (Serial UART Status, task-delay 1.0s) */
         xTaskCreate(
             vTaskSerialStatus,
             "Task_Serial",
@@ -281,25 +353,14 @@ void app_init(void) {
             &xHandleTaskSerial
         );
 
-        uart_puts("Tasks and Mutex created. Starting scheduler...\r\n");
-
         /* Start the FreeRTOS scheduler */
         vTaskStartScheduler();
-    } else {
-        uart_puts("ERROR: Failed to allocate Mutex from FreeRTOS heap.\r\n");
     }
 
-    /* Should never reach here */
     for (;;);
 }
 
-/*
- * Hook into Arduino SAMD cortex_handlers.c SysTick_Handler.
- * CRITICAL: Must check xTaskGetSchedulerState() first because Arduino's
- * main() enables SysTick and calls delay(1) BEFORE setup() / vTaskStartScheduler()
- * is ever reached! Calling xPortSysTickHandler() before the scheduler is started
- * dereferences NULL task lists and pends PendSV with PSP=0, causing a HardFault.
- */
+/* Hook into Arduino SAMD cortex_handlers.c SysTick_Handler */
 extern void xPortSysTickHandler(void);
 int sysTickHook(void) {
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
@@ -308,7 +369,6 @@ int sysTickHook(void) {
     return 0;
 }
 
-/* Compatible entry point for both bare-metal CMSIS and framework environments */
 #ifndef ARDUINO
 int main(void) {
     SystemInit();
@@ -322,6 +382,5 @@ void setup(void) {
 }
 
 void loop(void) {
-    /* Handled by FreeRTOS scheduler */
 }
 #endif
