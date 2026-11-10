@@ -92,7 +92,7 @@ Configuration: CASE (c) - Priority Inheritance Enabled (Preemptive=1, FreeRTOS M
 
 ---
 
-## 4. Conclusion: Which Scheduler Configuration Gave the "Better" Task Performance?
+## 3. Conclusion: Which Scheduler Configuration Gave the "Better" Task Performance?
 
 1. **Comparing Equal Priorities (1, 1, 1 — Run to Completion) vs. Literal `Task 1 (3) > Task 2 (2) > Task 3 (1)`:**
    * **All Three Tasks at the SAME Priority (Run to Completion)** gave vastly better performance.
