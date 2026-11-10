@@ -23,22 +23,21 @@
 
 /* -------------------------------------------------------------------------- */
 /* Hardware Pin Definitions (ATSAMD21G18A on Arduino MKR Zero)                */
-/* Digital Pin 1 maps to PORTA Pin 23 (PA23)                                  */
+/* - Digital Pin 1 on MKR Zero header maps to PORTA Pin 23 (PA23)             */
+/* - Builtin onboard LED (labeled "L") maps to PORTB Pin 8 (PB08)             */
+/* We drive BOTH so you can see it blink on Pin 1 AND on the onboard LED!     */
 /* -------------------------------------------------------------------------- */
-#define LED_PIN_MASK        PORT_PA23       /* PA23 bitmask (1UL << 23) */
-#define LED_PORT_GROUP      (PORT->Group[0]) /* Group 0 = PORTA */
+#define PIN1_MASK           PORT_PA23        /* Pin 1 = PA23 (1UL << 23) */
+#define ONBOARD_LED_MASK    (1UL << 8)       /* Builtin LED = PB08 */
 
 /* -------------------------------------------------------------------------- */
 /* Task Priorities (Each task has its own distinct priority via const int)    */
 /* -------------------------------------------------------------------------- */
 /*
  * Priority Structure:
- * - PRIORITY_TASK_LED_OFF (3): Highest priority. Preempts lower-priority tasks 
- *   as soon as its 1-second delay elapses to take the mutex and turn the LED off.
- * - PRIORITY_TASK_SERIAL  (2): Medium priority. Preempts the active-waiting loop 
- *   of Task_LedOn every second to transmit UART status.
- * - PRIORITY_TASK_LED_ON  (1): Lowest priority. It actively waits (spins) for 0.5s 
- *   and yields, allowing higher-priority tasks to run whenever unblocked.
+ * - PRIORITY_TASK_LED_OFF (3): Highest priority.
+ * - PRIORITY_TASK_SERIAL  (2): Medium priority.
+ * - PRIORITY_TASK_LED_ON  (1): Lowest priority.
  */
 const int PRIORITY_TASK_LED_OFF = 3;
 const int PRIORITY_TASK_SERIAL  = 2;
@@ -60,44 +59,51 @@ TaskHandle_t xHandleTaskLedOff  = NULL;
 TaskHandle_t xHandleTaskSerial  = NULL;
 
 /* -------------------------------------------------------------------------- */
-/* Low-Level GPIO & UART Helper Functions (Pure CMSIS / sam.h)               */
+/* Low-Level GPIO & UART Helper Functions (Pure CMSIS / sam.h)                */
 /* -------------------------------------------------------------------------- */
 
 /**
- * @brief Configure Pin 1 (PA23) as a digital output.
+ * @brief Configure Pin 1 (PA23) and Onboard LED (PB08) as digital outputs.
  */
 static void gpio_init(void) {
-    /* Set PA23 direction to output */
-    LED_PORT_GROUP.DIRSET.reg = LED_PIN_MASK;
-    /* Initialize pin LOW (LED OFF) */
-    LED_PORT_GROUP.OUTCLR.reg = LED_PIN_MASK;
+    /* Set Pin 1 (PA23, PORTA) as output */
+    PORT->Group[0].DIRSET.reg = PIN1_MASK;
+    PORT->Group[0].OUTCLR.reg = PIN1_MASK;
+
+    /* Set Onboard LED (PB08, PORTB) as output */
+    PORT->Group[1].DIRSET.reg = ONBOARD_LED_MASK;
+    PORT->Group[1].OUTCLR.reg = ONBOARD_LED_MASK;
 }
 
 /**
- * @brief Drive Pin 1 (PA23) HIGH (LED ON).
+ * @brief Drive Pin 1 (PA23) and Onboard LED (PB08) HIGH (LED ON).
  */
 static inline void gpio_led_on(void) {
-    LED_PORT_GROUP.OUTSET.reg = LED_PIN_MASK;
+    PORT->Group[0].OUTSET.reg = PIN1_MASK;
+    PORT->Group[1].OUTSET.reg = ONBOARD_LED_MASK;
 }
 
 /**
- * @brief Drive Pin 1 (PA23) LOW (LED OFF).
+ * @brief Drive Pin 1 (PA23) and Onboard LED (PB08) LOW (LED OFF).
  */
 static inline void gpio_led_off(void) {
-    LED_PORT_GROUP.OUTCLR.reg = LED_PIN_MASK;
+    PORT->Group[0].OUTCLR.reg = PIN1_MASK;
+    PORT->Group[1].OUTCLR.reg = ONBOARD_LED_MASK;
 }
 
 /**
  * @brief Read current output state of Pin 1 (PA23).
  */
 static inline bool gpio_led_is_on(void) {
-    return (LED_PORT_GROUP.OUT.reg & LED_PIN_MASK) != 0;
+    return (PORT->Group[0].OUT.reg & PIN1_MASK) != 0;
 }
 
 /**
  * @brief Initialize SERCOM5 for Serial UART output on PB22(RX) / PB23(TX).
  */
 static void uart_init(uint32_t baudrate) {
+    uint32_t timeout;
+
     /* Enable APBC clock for SERCOM5 */
     PM->APBCMASK.reg |= PM_APBCMASK_SERCOM5;
 
@@ -105,7 +111,9 @@ static void uart_init(uint32_t baudrate) {
     GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(SERCOM5_GCLK_ID_CORE) |
                         GCLK_CLKCTRL_GEN_GCLK0 |
                         GCLK_CLKCTRL_CLKEN;
-    while (GCLK->STATUS.bit.SYNCBUSY);
+    
+    timeout = 10000;
+    while (GCLK->STATUS.bit.SYNCBUSY && --timeout);
 
     /* Configure PB22 and PB23 pins for SERCOM5 peripheral mux */
     PORT->Group[1].PINCFG[22].bit.PMUXEN = 1;
@@ -114,7 +122,8 @@ static void uart_init(uint32_t baudrate) {
 
     /* Software reset SERCOM5 */
     SERCOM5->USART.CTRLA.reg = SERCOM_USART_CTRLA_SWRST;
-    while (SERCOM5->USART.CTRLA.bit.SWRST || SERCOM5->USART.SYNCBUSY.bit.SWRST);
+    timeout = 10000;
+    while ((SERCOM5->USART.CTRLA.bit.SWRST || SERCOM5->USART.SYNCBUSY.bit.SWRST) && --timeout);
 
     /* Configure USART mode: asynchronous, internal clock, LSB first */
     SERCOM5->USART.CTRLA.reg = SERCOM_USART_CTRLA_MODE_USART_INT_CLK |
@@ -124,16 +133,17 @@ static void uart_init(uint32_t baudrate) {
 
     /* Enable transmitter */
     SERCOM5->USART.CTRLB.reg = SERCOM_USART_CTRLB_TXEN;
-    while (SERCOM5->USART.SYNCBUSY.bit.CTRLB);
+    timeout = 10000;
+    while (SERCOM5->USART.SYNCBUSY.bit.CTRLB && --timeout);
 
     /* Calculate baud rate value for asynchronous arithmetic mode */
-    /* BAUD = 65536 * (1 - 16 * (baudrate / f_ref)) */
     uint64_t baud_val = 65536ULL * (48000000ULL - 16ULL * (uint64_t)baudrate) / 48000000ULL;
     SERCOM5->USART.BAUD.reg = (uint16_t)baud_val;
 
     /* Enable SERCOM5 */
     SERCOM5->USART.CTRLA.reg |= SERCOM_USART_CTRLA_ENABLE;
-    while (SERCOM5->USART.SYNCBUSY.bit.ENABLE);
+    timeout = 10000;
+    while (SERCOM5->USART.SYNCBUSY.bit.ENABLE && --timeout);
 }
 
 /**
@@ -171,7 +181,7 @@ void vTaskLedOn(void *pvParameters) {
     for (;;) {
         /* Acquire mutex guarding the shared GPIO pin */
         if (xSemaphoreTake(xLedMutex, portMAX_DELAY) == pdTRUE) {
-            /* Turn Pin 1 ON (PA23 HIGH) */
+            /* Turn Pin 1 ON (PA23 HIGH) and Onboard LED ON */
             gpio_led_on();
 
             /* Actively wait for 0.5s (500 ms) using CPU spin loop */
@@ -199,15 +209,18 @@ void vTaskLedOff(void *pvParameters) {
     for (;;) {
         /* Acquire mutex guarding the shared GPIO pin */
         if (xSemaphoreTake(xLedMutex, portMAX_DELAY) == pdTRUE) {
-            /* Turn Pin 1 OFF (PA23 LOW) */
+            /* Turn Pin 1 OFF (PA23 LOW) and Onboard LED OFF */
             gpio_led_off();
 
-            /* Release mutex */
+            /* Hold mutex and delay for 1.0s (1000 ms) so the LED stays visibly OFF */
+            vTaskDelay(pdMS_TO_TICKS(1000));
+
+            /* Release mutex after the 1.0s OFF period */
             xSemaphoreGive(xLedMutex);
         }
 
-        /* Block / task-delay for 1.0 second (1000 ms) */
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        /* Small delay to allow Task 1 to acquire mutex and turn LED ON */
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -219,7 +232,7 @@ void vTaskSerialStatus(void *pvParameters) {
 
     for (;;) {
         /* Print status message via Serial UART */
-        uart_puts("[FreeRTOS Status] Heartbeat | Pin 1 (PA23) State: ");
+        uart_puts("[FreeRTOS Status] Heartbeat | Pin 1 State: ");
         if (gpio_led_is_on()) {
             uart_puts("ON\r\n");
         } else {
