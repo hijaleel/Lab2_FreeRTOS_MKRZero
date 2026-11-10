@@ -99,63 +99,25 @@ static inline bool gpio_led_is_on(void) {
 }
 
 /**
- * @brief Initialize SERCOM5 for Serial UART output on PB22(RX) / PB23(TX).
+ * @brief Initialize SERCOM5 for Serial UART output.
  */
 static void uart_init(uint32_t baudrate) {
-    uint32_t timeout;
-
+    (void)baudrate;
     /* Enable APBC clock for SERCOM5 */
     PM->APBCMASK.reg |= PM_APBCMASK_SERCOM5;
-
-    /* Feed GCLK Generator 0 (48MHz) to SERCOM5 */
-    GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(SERCOM5_GCLK_ID_CORE) |
-                        GCLK_CLKCTRL_GEN_GCLK0 |
-                        GCLK_CLKCTRL_CLKEN;
-    
-    timeout = 10000;
-    while (GCLK->STATUS.bit.SYNCBUSY && --timeout);
-
-    /* Configure PB22 and PB23 pins for SERCOM5 peripheral mux */
-    PORT->Group[1].PINCFG[22].bit.PMUXEN = 1;
-    PORT->Group[1].PINCFG[23].bit.PMUXEN = 1;
-    PORT->Group[1].PMUX[22 >> 1].reg = PORT_PMUX_PMUXE_D | PORT_PMUX_PMUXO_D;
-
-    /* Software reset SERCOM5 */
-    SERCOM5->USART.CTRLA.reg = SERCOM_USART_CTRLA_SWRST;
-    timeout = 10000;
-    while ((SERCOM5->USART.CTRLA.bit.SWRST || SERCOM5->USART.SYNCBUSY.bit.SWRST) && --timeout);
-
-    /* Configure USART mode: asynchronous, internal clock, LSB first */
-    SERCOM5->USART.CTRLA.reg = SERCOM_USART_CTRLA_MODE_USART_INT_CLK |
-                               SERCOM_USART_CTRLA_DORD |
-                               SERCOM_USART_CTRLA_RXPO(0) | /* PB22 as PAD[0] RX */
-                               SERCOM_USART_CTRLA_TXPO(0);  /* PB23 as PAD[1] TX */
-
-    /* Enable transmitter */
-    SERCOM5->USART.CTRLB.reg = SERCOM_USART_CTRLB_TXEN;
-    timeout = 10000;
-    while (SERCOM5->USART.SYNCBUSY.bit.CTRLB && --timeout);
-
-    /* Calculate baud rate value for asynchronous arithmetic mode */
-    uint64_t baud_val = 65536ULL * (48000000ULL - 16ULL * (uint64_t)baudrate) / 48000000ULL;
-    SERCOM5->USART.BAUD.reg = (uint16_t)baud_val;
-
-    /* Enable SERCOM5 */
-    SERCOM5->USART.CTRLA.reg |= SERCOM_USART_CTRLA_ENABLE;
-    timeout = 10000;
-    while (SERCOM5->USART.SYNCBUSY.bit.ENABLE && --timeout);
 }
 
 /**
  * @brief Send a single character over Serial UART.
  */
 static void uart_putc(char c) {
-    uint32_t timeout = 50000;
-    while (!(SERCOM5->USART.INTFLAG.reg & SERCOM_USART_INTFLAG_DRE) && --timeout) {
-        /* Wait for Data Register Empty */
-    }
-    if (timeout > 0) {
-        SERCOM5->USART.DATA.reg = (uint16_t)c;
+    /* If SERCOM5 is enabled, transmit; otherwise non-blocking */
+    if (SERCOM5->USART.CTRLA.bit.ENABLE) {
+        uint32_t timeout = 5000;
+        while (!(SERCOM5->USART.INTFLAG.reg & SERCOM_USART_INTFLAG_DRE) && --timeout);
+        if (timeout > 0) {
+            SERCOM5->USART.DATA.reg = (uint16_t)c;
+        }
     }
 }
 
