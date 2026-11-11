@@ -3,13 +3,14 @@
  * Lab 2: FreeRTOS on ATSAMD21G18A (Arduino MKR Zero / ARM Cortex-M0+)
  * Using pure CMSIS ("sam.h") without Arduino.h
  *
- * Individual Part - Task Performance & Scheduler Configuration Exploration:
- *   SCHEDULER_CASE 0: Same Priority (1, 1, 1) - Run to Completion (Preemption=0)
- *   SCHEDULER_CASE 1: Case (a) Task1=3, Task2=2, Task3=1 - Run to Completion (Preemption=0)
- *   SCHEDULER_CASE 2: Case (b) Task1=3, Task2=2, Task3=1 - No Priority Inheritance (Binary Sem)
- *   SCHEDULER_CASE 3: Case (c) Task1=3, Task2=2, Task3=1 - Priority Inheritance Enabled (Mutex)
- *   SCHEDULER_CASE 4: Case (b-inv) Priority Inversion Demo (LedOff=3, Serial=2, LedOn=1, Binary Sem)
- *   SCHEDULER_CASE 5: Case (c-inh) Priority Inheritance Demo (LedOff=3, Serial=2, LedOn=1, Mutex)
+ * Question 4 - Kernel-Level Blocked-Task Tracking & Performance Investigation:
+ *   - Implements FreeRTOS Debug/RunTime Trace Macros:
+ *       1) traceBLOCKING_ON_QUEUE_RECEIVE(pxQueue) -> vTraceTaskBlockedOnMutex()
+ *       2) traceTASK_DELAY()                       -> vTraceTaskBlockedOnDelay()
+ *   - Implements FreeRTOS IDLE Hook:
+ *       3) vApplicationIdleHook()
+ *   - Compares Same Task Priorities (SCHEDULER_CASE = 0) vs.
+ *     Distinct Task Priorities (SCHEDULER_CASE = 5).
  * ============================================================================
  */
 
@@ -25,10 +26,9 @@
 
 /* -------------------------------------------------------------------------- */
 /* Select Active Test Case (0..5)                                             */
-/* Can be overridden via platformio.ini build_flags (-DSCHEDULER_CASE=...)    */
 /* -------------------------------------------------------------------------- */
 #ifndef SCHEDULER_CASE
-#define SCHEDULER_CASE 0
+#define SCHEDULER_CASE 5
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -43,41 +43,35 @@
 /* Task Priorities (Each task has its own priority determined by a const int) */
 /* -------------------------------------------------------------------------- */
 #if (SCHEDULER_CASE == 0)
-    /* Baseline: All three tasks have the SAME priority level (Run to Completion) */
+    /* Same Priority Case: All three tasks share Priority 1 */
     const int PRIORITY_TASK_LED_ON  = 1;
     const int PRIORITY_TASK_LED_OFF = 1;
     const int PRIORITY_TASK_SERIAL  = 1;
-    #define CASE_NAME "CASE 0: Same Priority (1,1,1) - Run to Completion (configUSE_PREEMPTION=0)"
 #elif (SCHEDULER_CASE == 1)
     /* Case (a): Task 1 Highest (3), Task 2 (2), Task 3 (1) - Run to Completion */
     const int PRIORITY_TASK_LED_ON  = 3;
     const int PRIORITY_TASK_LED_OFF = 2;
     const int PRIORITY_TASK_SERIAL  = 1;
-    #define CASE_NAME "CASE (a): Task1=3, Task2=2, Task3=1 - Run to Completion (configUSE_PREEMPTION=0)"
 #elif (SCHEDULER_CASE == 2)
     /* Case (b): Task 1 Highest (3), Task 2 (2), Task 3 (1) - No Priority Inheritance */
     const int PRIORITY_TASK_LED_ON  = 3;
     const int PRIORITY_TASK_LED_OFF = 2;
     const int PRIORITY_TASK_SERIAL  = 1;
-    #define CASE_NAME "CASE (b): Task1=3, Task2=2, Task3=1 - No Priority Inheritance (Binary Semaphore)"
 #elif (SCHEDULER_CASE == 3)
     /* Case (c): Task 1 Highest (3), Task 2 (2), Task 3 (1) - Priority Inheritance Enabled */
     const int PRIORITY_TASK_LED_ON  = 3;
     const int PRIORITY_TASK_LED_OFF = 2;
     const int PRIORITY_TASK_SERIAL  = 1;
-    #define CASE_NAME "CASE (c): Task1=3, Task2=2, Task3=1 - Priority Inheritance Enabled (Mutex)"
 #elif (SCHEDULER_CASE == 4)
-    /* Case (b-inv): Blocking Task Highest (LedOff=3, Serial=2, LedOn=1) - No Priority Inheritance */
+    /* Distinct Priorities (No Priority Inheritance): High=LedOff(3), Med=Serial(2), Low=LedOn(1) */
     const int PRIORITY_TASK_LED_ON  = 1;
     const int PRIORITY_TASK_LED_OFF = 3;
     const int PRIORITY_TASK_SERIAL  = 2;
-    #define CASE_NAME "CASE (b-inversion): High=LedOff(3), Med=Serial(2), Low=LedOn(1) - No Priority Inheritance"
 #else
-    /* Case (c-inh): Blocking Task Highest (LedOff=3, Serial=2, LedOn=1) - Priority Inheritance Enabled */
+    /* Distinct Priorities (Priority Inheritance Enabled): High=LedOff(3), Med=Serial(2), Low=LedOn(1) */
     const int PRIORITY_TASK_LED_ON  = 1;
     const int PRIORITY_TASK_LED_OFF = 3;
     const int PRIORITY_TASK_SERIAL  = 2;
-    #define CASE_NAME "CASE (c-inheritance): High=LedOff(3), Med=Serial(2), Low=LedOn(1) - Priority Inheritance Enabled"
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -87,7 +81,7 @@
 #define STACK_SIZE_SERIAL       ( ( configSTACK_DEPTH_TYPE ) 256 )
 
 /* -------------------------------------------------------------------------- */
-/* FreeRTOS Synchronization Handles & Telemetry Counters                      */
+/* FreeRTOS Synchronization Handles & Execution/Blocking Telemetry Counters   */
 /* -------------------------------------------------------------------------- */
 SemaphoreHandle_t xLedMutex = NULL;
 
@@ -95,9 +89,20 @@ TaskHandle_t xHandleTaskLedOn   = NULL;
 TaskHandle_t xHandleTaskLedOff  = NULL;
 TaskHandle_t xHandleTaskSerial  = NULL;
 
+/* Execution counters */
 volatile uint32_t ulTask1Count = 0;
 volatile uint32_t ulTask2Count = 0;
 volatile uint32_t ulTask3Count = 0;
+
+/* Question 4: Kernel Trace Blocked-Task Counters */
+volatile uint32_t ulTask1BlockedMutex = 0;  /* Times Task 1 blocked waiting for xLedMutex */
+volatile uint32_t ulTask2BlockedMutex = 0;  /* Times Task 2 blocked waiting for xLedMutex */
+volatile uint32_t ulTask2BlockedDelay = 0;  /* Times Task 2 blocked via vTaskDelay() */
+volatile uint32_t ulTask3BlockedDelay = 0;  /* Times Task 3 blocked via vTaskDelay() */
+volatile uint32_t ulTotalBlockedEvents = 0; /* Total kernel-tracked blocking transitions */
+
+/* Question 4: IDLE Hook Counter (increments when ALL application tasks are blocked) */
+volatile uint32_t ulIdleHookCalls = 0;
 
 /* -------------------------------------------------------------------------- */
 /* USB CDC Symbol Bridge (allows pure C sam.h code to also log to USB COM)    */
@@ -105,6 +110,49 @@ volatile uint32_t ulTask3Count = 0;
 extern uint8_t SerialUSB[];
 extern size_t usb_cdc_write(void *this_ptr, const uint8_t *buf, size_t len) __asm__("_ZN7Serial_5writeEPKhj");
 extern bool usb_cdc_dtr(void *this_ptr) __asm__("_ZN7Serial_3dtrEv");
+
+/* -------------------------------------------------------------------------- */
+/* Question 4: Kernel Trace & Idle Hook Implementations                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief Invoked by FreeRTOS kernel macro traceBLOCKING_ON_QUEUE_RECEIVE(pxQueue)
+ *        inside xQueueSemaphoreTake() whenever a task is about to enter the
+ *        Blocked state because the mutex/semaphore is currently held.
+ */
+void vTraceTaskBlockedOnMutex(void *pxQueue) {
+    if ((SemaphoreHandle_t)pxQueue == xLedMutex) {
+        TaskHandle_t xCur = xTaskGetCurrentTaskHandle();
+        if (xCur == xHandleTaskLedOn) {
+            ulTask1BlockedMutex++;
+        } else if (xCur == xHandleTaskLedOff) {
+            ulTask2BlockedMutex++;
+        }
+        ulTotalBlockedEvents++;
+    }
+}
+
+/**
+ * @brief Invoked by FreeRTOS kernel macro traceTASK_DELAY() inside vTaskDelay()
+ *        whenever a task transitions from Running to Blocked for a timed delay.
+ */
+void vTraceTaskBlockedOnDelay(void) {
+    TaskHandle_t xCur = xTaskGetCurrentTaskHandle();
+    if (xCur == xHandleTaskLedOff) {
+        ulTask2BlockedDelay++;
+    } else if (xCur == xHandleTaskSerial) {
+        ulTask3BlockedDelay++;
+    }
+    ulTotalBlockedEvents++;
+}
+
+/**
+ * @brief FreeRTOS Idle Hook (called by prvIdleTask at Priority 0 only when
+ *        all application tasks are in the Blocked state).
+ */
+void vApplicationIdleHook(void) {
+    ulIdleHookCalls++;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Low-Level GPIO & UART Helper Functions (Pure CMSIS / sam.h)                */
@@ -219,12 +267,20 @@ static void log_event(const char *task_tag, const char *event_msg) {
     uart_put_uint((uint32_t)uxEffPrio);
     uart_puts("): ");
     uart_puts(event_msg);
-    uart_puts(" | Counts(T1=");
+    uart_puts(" | Runs(T1=");
     uart_put_uint(ulTask1Count);
-    uart_puts(", T2=");
+    uart_puts(",T2=");
     uart_put_uint(ulTask2Count);
-    uart_puts(", T3=");
+    uart_puts(",T3=");
     uart_put_uint(ulTask3Count);
+    uart_puts(") | Blocked(T1_mtx=");
+    uart_put_uint(ulTask1BlockedMutex);
+    uart_puts(",T2_mtx=");
+    uart_put_uint(ulTask2BlockedMutex);
+    uart_puts(",T2_dly=");
+    uart_put_uint(ulTask2BlockedDelay);
+    uart_puts(",T3_dly=");
+    uart_put_uint(ulTask3BlockedDelay);
     uart_puts(") | Pin1=");
     uart_puts(gpio_led_is_on() ? "ON\r\n" : "OFF\r\n");
 }
@@ -310,20 +366,16 @@ void app_init(void) {
     gpio_init();
     uart_init(115200);
 
-    /* Create Synchronization Primitive:
-     * Cases 2 & 4 use Binary Semaphore (NO priority inheritance).
-     * Cases 0, 1, 3, & 5 use FreeRTOS Mutex (Priority Inheritance enabled). */
 #if (SCHEDULER_CASE == 2) || (SCHEDULER_CASE == 4)
     xLedMutex = xSemaphoreCreateBinary();
     if (xLedMutex != NULL) {
-        xSemaphoreGive(xLedMutex); /* Initialize binary semaphore to available */
+        xSemaphoreGive(xLedMutex);
     }
 #else
     xLedMutex = xSemaphoreCreateMutex();
 #endif
 
     if (xLedMutex != NULL) {
-        /* Create Task 1 (Turn LED ON, actively wait 0.5s, yield) */
         xTaskCreate(
             vTaskLedOn,
             "Task_LedOn",
@@ -333,7 +385,6 @@ void app_init(void) {
             &xHandleTaskLedOn
         );
 
-        /* Create Task 2 (Turn LED OFF, task-delay 1.0s) */
         xTaskCreate(
             vTaskLedOff,
             "Task_LedOff",
@@ -343,7 +394,6 @@ void app_init(void) {
             &xHandleTaskLedOff
         );
 
-        /* Create Task 3 (Serial UART Status, task-delay 1.0s) */
         xTaskCreate(
             vTaskSerialStatus,
             "Task_Serial",
@@ -353,7 +403,6 @@ void app_init(void) {
             &xHandleTaskSerial
         );
 
-        /* Start the FreeRTOS scheduler */
         vTaskStartScheduler();
     }
 

@@ -16,7 +16,7 @@
  *   2: Case (b) No Priority Inheritance (configUSE_PREEMPTION = 1, Binary Semaphore)
  *   3: Case (c) Priority Inheritance Enabled (configUSE_PREEMPTION = 1, Mutex)
  *   4: Case (b-inv) Priority Inversion Demo (Preemptive, Binary Semaphore, No Inheritance)
- *   5: Case (c-inh) Priority Inheritance Demo (Preemptive, Mutex, Inheritance Enabled)
+ *   5: Distinct Priorities (LedOff=3, Serial=2, LedOn=1) - Preemptive + Priority Inheritance
  */
 #ifndef SCHEDULER_CASE
 #define SCHEDULER_CASE 5
@@ -34,7 +34,8 @@
     #define configUSE_TIME_SLICING              1
 #endif
 
-#define configUSE_IDLE_HOOK                     0
+/* Question 4: Enable IDLE Hook and Kernel Debug/RunTime Trace Macros */
+#define configUSE_IDLE_HOOK                     1
 #define configUSE_TICK_HOOK                     0
 #define configCPU_CLOCK_HZ                      ( ( unsigned long ) 48000000 ) /* SAMD21 runs at 48 MHz */
 #define configTICK_RATE_HZ                      ( ( TickType_t ) 1000 )        /* 1 ms tick */
@@ -42,7 +43,7 @@
 #define configMINIMAL_STACK_SIZE                ( ( uint16_t ) 128 )          /* Words (4 bytes each) */
 #define configTOTAL_HEAP_SIZE                   ( ( size_t ) ( 12 * 1024 ) )   /* 12 KB heap in 32 KB SRAM */
 #define configMAX_TASK_NAME_LEN                 ( 16 )
-#define configUSE_TRACE_FACILITY                0
+#define configUSE_TRACE_FACILITY                1
 #define configUSE_16_BIT_TICKS                  0
 #define configIDLE_SHOULD_YIELD                 1
 
@@ -79,5 +80,18 @@
 /* Map FreeRTOS port interrupt handlers to CMSIS standard vector names */
 #define vPortSVCHandler                         SVC_Handler
 #define xPortPendSVHandler                      PendSV_Handler
+
+/*-----------------------------------------------------------
+ * Question 4: Kernel-Level Debug/RunTime Trace Macros
+ * Tracks every exact instance in which a task enters the Blocked state
+ * (either blocking on a mutex/semaphore or blocking on vTaskDelay).
+ *----------------------------------------------------------*/
+#ifndef __ASSEMBLER__
+extern void vTraceTaskBlockedOnMutex( void *pxQueue );
+extern void vTraceTaskBlockedOnDelay( void );
+#endif
+
+#define traceBLOCKING_ON_QUEUE_RECEIVE( pxQueue )   vTraceTaskBlockedOnMutex( ( void * )( pxQueue ) )
+#define traceTASK_DELAY()                           vTraceTaskBlockedOnDelay()
 
 #endif /* FREERTOS_CONFIG_H */

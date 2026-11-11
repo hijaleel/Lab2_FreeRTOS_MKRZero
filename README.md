@@ -1,23 +1,16 @@
 # Lab 2: FreeRTOS on Arduino MKR Zero (ATSAMD21G18A / ARM Cortex-M0+)
 
-Repository for **Lab 2 (FreeRTOS Porting, Synchronization & Scheduler Performance Analysis)** on the **Arduino MKR Zero** (`ATSAMD21G18A`, ARM Cortex-M0+) using **GCC** and pure CMSIS (`sam.h`) register-level programming.
+Repository for **Lab 2 (FreeRTOS Porting, Synchronization, Scheduler Performance & Blocked-Task Investigation)** on the **Arduino MKR Zero** (`ATSAMD21G18A`, ARM Cortex-M0+) using **GCC** and pure CMSIS (`sam.h`) register-level programming.
 
 ---
 
-## Repository Structure
+## Quick Links for Grading (Questions 1 – 4)
 
-| Path | Description |
-| :--- | :--- |
-| [`src/main.c`](./src/main.c) | Main C application implementing the 3 FreeRTOS tasks (`vTaskLedOn`, `vTaskLedOff`, `vTaskSerialStatus`), mutex/semaphore synchronization on **Pin 1 (`PA23`)**, SERCOM5 UART driver, and configurable `SCHEDULER_CASE` selector. |
-| [`include/FreeRTOSConfig.h`](./include/FreeRTOSConfig.h) | Customizable FreeRTOS kernel configuration (`configUSE_PREEMPTION`, `configUSE_MUTEXES`, `configCPU_CLOCK_HZ = 48000000`, CMSIS vector mappings). |
-| [`src/FreeRTOS/portable/GCC/ARM_CM0/`](./src/FreeRTOS/portable/GCC/ARM_CM0) | Architecture/compiler port files (`port.c` and `portmacro.h`) for GCC on ARM Cortex-M0/M0+. |
-| [`binaries/`](./binaries) | Compiled firmware binaries (`.bin` and `.elf`) for each tested scheduler configuration (`case0_same_priority_rtc`, `caseA_task1_highest_rtc`, `caseB_no_priority_inheritance`, `caseC_priority_inheritance`). |
-| [`evidence/`](./evidence) | Hardware Serial UART capture logs (`*.txt`), GPIO Pin 1 oscilloscope/timing waveform trace ([`gpio_pin1_oscilloscope_traces.svg`](./evidence/gpio_pin1_oscilloscope_traces.svg)), and full performance analysis ([`evidence/README.md`](./evidence/README.md)). |
-
----
-
-## GPIO Pin 1 (`PA23`) Timing & Oscilloscope Waveform Comparison
-
-![GPIO Pin 1 Oscilloscope Timing Traces](./evidence/gpio_pin1_oscilloscope_traces.svg)
-
-See [`evidence/README.md`](./evidence/README.md) for the complete hardware UART captures and analysis of **Same Priority (Run to Completion)** vs. **Cases (a), (b), and (c)**.
+| Deliverable | File Link | Description |
+| :--- | :--- | :--- |
+| **C Application Program** | [`src/main.c`](./src/main.c) | Complete C application (`sam.h`) with 3 FreeRTOS tasks, mutex/semaphore synchronization on **Pin 1 (`PA23`)**, SERCOM5 UART driver, and Question 4 kernel trace hooks (`traceBLOCKING_ON_QUEUE_RECEIVE` & `traceTASK_DELAY`) + Idle Hook (`vApplicationIdleHook`). |
+| **FreeRTOS Config** | [`include/FreeRTOSConfig.h`](./include/FreeRTOSConfig.h) | Customizable FreeRTOS configuration with `configUSE_PREEMPTION`, `configUSE_MUTEXES`, `configUSE_IDLE_HOOK`, and kernel trace macro definitions. |
+| **Application Binaries** | [`binaries/firmware.bin`](./binaries/firmware.bin)<br>[`binaries/`](./binaries) | Compiled application binary (`firmware.bin` / `firmware.elf`) plus individual binaries for Same Priority (`q4_same_priorities_trace.bin`), Distinct Priorities (`q4_distinct_priorities_trace.bin`), and Cases (a), (b), (c). |
+| **Demonstration Video (<5MB)** | [`demo_video.mp4`](./demo_video.mp4)<br>([`evidence/demo_video.mp4`](./evidence/demo_video.mp4)) | Video (`3.89 MB`, strictly `< 5 MB`) proving that the program built, loaded, and ran successfully on the Arduino MKR Zero hardware. |
+| **Performance & Evidence Report** | [`evidence/README.md`](./evidence/README.md) | Hardware Serial UART captures (`*.txt`) and full Question 3 & Question 4 analysis. |
+| **GCC ARM_CM0 Port Files** | [`src/FreeRTOS/portable/GCC/ARM_CM0/`](./src/FreeRTOS/portable/GCC/ARM_CM0) | `port.c` and `portmacro.h` for ARM Cortex-M0+ (`ATSAMD21G18A`). |
