@@ -109,7 +109,7 @@ Configuration: CASE (c) - Priority Inheritance Enabled (Preemptive=1, FreeRTOS M
 ### Real Hardware Serial UART Capture — Message Queue IPC (`SCHEDULER_CASE = 6`, Recorded on MKR Zero `COM9`)
 * **Evidence File:** [`q5_message_queue_uart.txt`](./q5_message_queue_uart.txt)
 * **Binary:** [`../binaries/q5_message_queue.bin`](../binaries/q5_message_queue.bin) (also [`../binaries/firmware.bin`](../binaries/firmware.bin))
-* **Demonstration Video (<5MB):** [`../demo_video.mp4`](../demo_video.mp4) (`3.89 MB`)
+* **Question 5 Demonstration Video (<5MB):** [`../q5_demo_video.mp4`](../q5_demo_video.mp4) / [`./q5_demo_video.mp4`](./q5_demo_video.mp4) (`2.18 MB`)
 
 ```text
 [t=28906 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#37): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=19,T2=19,T3=29) | Blocked(T1_ipc=19,T2_ipc=18,T2_dly=38,T3_dly=29) | Pin1=ON
