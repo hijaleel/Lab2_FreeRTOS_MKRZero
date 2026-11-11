@@ -16,10 +16,12 @@
  *   2: Case (b) No Priority Inheritance (configUSE_PREEMPTION = 1, Binary Semaphore)
  *   3: Case (c) Priority Inheritance Enabled (configUSE_PREEMPTION = 1, Mutex)
  *   4: Case (b-inv) Priority Inversion Demo (Preemptive, Binary Semaphore, No Inheritance)
- *   5: Distinct Priorities (LedOff=3, Serial=2, LedOn=1) - Preemptive + Priority Inheritance
+ *   5: Distinct Priorities (LedOff=3, Serial=2, LedOn=1) - Preemptive + Mutex (Priority Inheritance)
+ *   6: Question 5 - Message Queue IPC replacing Mutex (xQueueCreate / xQueueSend / xQueueReceive)
+ *   7: Question 5 - Binary Semaphore IPC replacing Mutex (xSemaphoreCreateBinary / Take / Give)
  */
 #ifndef SCHEDULER_CASE
-#define SCHEDULER_CASE 5
+#define SCHEDULER_CASE 6
 #endif
 
 /*-----------------------------------------------------------

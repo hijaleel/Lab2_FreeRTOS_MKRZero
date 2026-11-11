@@ -101,3 +101,28 @@ Configuration: CASE (c) - Priority Inheritance Enabled (Preemptive=1, FreeRTOS M
 2. **Comparing Priority Inheritance Enabled (Case c) vs. No Priority Inheritance (Case b) under Preemptive Scheduling:**
    * **Priority Inheritance Enabled (`Case c`, using `xSemaphoreCreateMutex()`)** gave the best real-time determinism and responsiveness.
    * **Why:** When a low-priority active-waiting task (`EffPrio=1`) holds the shared GPIO mutex and a high-priority task (`EffPrio=3`) blocks waiting for that mutex, **Priority Inheritance** temporarily raises the mutex holder's effective priority from `1` to `3`. This prevents medium-priority tasks (`Task3_Serial`, `EffPrio=2`) from preempting the critical section (**preventing unbounded Priority Inversion**), ensuring the high-priority task acquires the GPIO pin immediately upon mutex release.
+
+---
+
+## 4. Question 5: Inter-Task Communication — Message Queue (`xQueueCreate`) & Semaphore vs. Mutex
+
+### Real Hardware Serial UART Capture — Message Queue IPC (`SCHEDULER_CASE = 6`, Recorded on MKR Zero `COM9`)
+* **Evidence File:** [`q5_message_queue_uart.txt`](./q5_message_queue_uart.txt)
+* **Binary:** [`../binaries/q5_message_queue.bin`](../binaries/q5_message_queue.bin) (also [`../binaries/firmware.bin`](../binaries/firmware.bin))
+* **Demonstration Video (<5MB):** [`../demo_video.mp4`](../demo_video.mp4) (`3.89 MB`)
+
+```text
+[t=28906 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#37): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=19,T2=19,T3=29) | Blocked(T1_ipc=19,T2_ipc=18,T2_dly=38,T3_dly=29) | Pin1=ON
+[t=29422 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#38): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=19,T2=19,T3=29) | Blocked(T1_ipc=19,T2_ipc=19,T2_dly=38,T3_dly=29) | Pin1=ON
+[t=29439 ms] Task2_LedOff (EffPrio=3,IPC=Queue#38): xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms) | Runs(T1=19,T2=20,T3=29) | Blocked(T1_ipc=19,T2_ipc=19,T2_dly=38,T3_dly=29) | Pin1=OFF
+[t=29456 ms] Task3_Serial (EffPrio=2,IPC=Queue#38): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=19,T2=20,T3=30) | Blocked(T1_ipc=19,T2_ipc=19,T2_dly=39,T3_dly=29) | Pin1=OFF
+[t=32021 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#41): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=21,T2=21,T3=32) | Blocked(T1_ipc=21,T2_ipc=20,T2_dly=42,T3_dly=32) | Pin1=ON
+[t=32502 ms] Task3_Serial (EffPrio=2,IPC=Queue#41): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=21,T2=21,T3=33) | Blocked(T1_ipc=21,T2_ipc=21,T2_dly=42,T3_dly=32) | Pin1=ON
+[t=32537 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#42): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=21,T2=21,T3=33) | Blocked(T1_ipc=21,T2_ipc=21,T2_dly=42,T3_dly=33) | Pin1=ON
+[t=32553 ms] Task2_LedOff (EffPrio=3,IPC=Queue#42): xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms) | Runs(T1=21,T2=22,T3=33) | Blocked(T1_ipc=21,T2_ipc=21,T2_dly=42,T3_dly=33) | Pin1=OFF
+```
+
+> **Observation (Message Queue / Semaphore vs. Mutex):**
+> * With the **Message Queue** (`xQueueCreate(1, sizeof(LedMessage_t))`) or **Binary Semaphore**, `Task1_LedOn` (`EffPrio=1`) receives the message at `t = 32021 ms` and turns Pin 1 ON. When high-priority `Task2_LedOff` (`EffPrio=3`) wakes up `100 ms` later and blocks on `xQueueReceive()` (`T2_ipc` increments from `20` to `21`), **`Task1_LedOn` stays at `EffPrio=1`** because queues and semaphores have **no task ownership and no Priority Inheritance**.
+> * Consequently, at `t = 32502 ms`, medium-priority `Task3_Serial` (`EffPrio=2`) preempts `Task1_LedOn` (`EffPrio=1`) before `Task1_LedOn` can call `xQueueSend()`, causing **Priority Inversion** and delaying `Task2_LedOff` (`EffPrio=3`) until `t = 32553 ms` (and at `t = 30456 ms` in the full log, `Task3_Serial` even preempts `Task1_LedOn` mid-UART line).
+> * By contrast, the **Mutex (`xSemaphoreCreateMutex()`)** dynamically boosts `Task1_LedOn` from `EffPrio=1` to `EffPrio=3`, preventing `Task3_Serial` from preempting the critical section and guaranteeing **deterministic** worst-case blocking time.

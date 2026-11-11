@@ -1,0 +1,19 @@
+﻿[t=27873 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#36): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=18,T2=18,T3=28) | Blocked(T1_ipc=18,T2_ipc=18,T2_dly=36,T3_dly=28) | Pin1=ON
+[t=27889 ms] Task2_LedOff (EffPrio=3,IPC=Queue#36): xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms) | Runs(T1=18,T2=19,T3=28) | Blocked(T1_ipc=18,T2_ipc=18,T2_dly=36,T3_dly=28) | Pin1=OFF
+[t=28429 ms] Task3_Serial (EffPrio=2,IPC=Queue#36): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=18,T2=19,T3=29) | Blocked(T1_ipc=19,T2_ipc=18,T2_dly=37,T3_dly=28) | Pin1=OFF
+[t=28906 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#37): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=19,T2=19,T3=29) | Blocked(T1_ipc=19,T2_ipc=18,T2_dly=38,T3_dly=29) | Pin1=ON
+[t=29422 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#38): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=19,T2=19,T3=29) | Blocked(T1_ipc=19,T2_ipc=19,T2_dly=38,T3_dly=29) | Pin1=ON
+[t=29439 ms] Task2_LedOff (EffPrio=3,IPC=Queue#38): xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms) | Runs(T1=19,T2=20,T3=29) | Blocked(T1_ipc=19,T2_ipc=19,T2_dly=38,T3_dly=29) | Pin1=OFF
+[t=29456 ms] Task3_Serial (EffPrio=2,IPC=Queue#38): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=19,T2=20,T3=30) | Blocked(T1_ipc=19,T2_ipc=19,T2_dly=39,T3_dly=29) | Pin1=OFF
+[t=30456 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#39): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=20,T2=20,T3=30) | Blocked(T1_ipc=20,T2_ipc=19,T2_dly=40,T3_dly=30[t=30472 ms] Task3_Serial (EffPrio=2,IPC=Queue#39): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=20,T2=20,T3=31) | Blocked(T1_ipc=20,T2_ipc=19,T2_dly=40,T3_dly=30) | Pin1=ON
+) | Pin1=ON
+[t=30988 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#40): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=20,T2=20,T3=31) | Blocked(T1_ipc=20,T2_ipc=20,T2_dly=40,T3_dly=31) | Pin1=ON
+[t=31004 ms] Task2_LedOff (EffPrio=3,IPC=Queue#40): xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms) | Runs(T1=20,T2=21,T3=31) | Blocked(T1_ipc=20,T2_ipc=20,T2_dly=40,T3_dly=31) | Pin1=OFF
+[t=31487 ms] Task3_Serial (EffPrio=2,IPC=Queue#40): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=20,T2=21,T3=32) | Blocked(T1_ipc=21,T2_ipc=20,T2_dly=41,T3_dly=31) | Pin1=OFF
+[t=32021 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#41): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=21,T2=21,T3=32) | Blocked(T1_ipc=21,T2_ipc=20,T2_dly=42,T3_dly=32) | Pin1=ON
+[t=32502 ms] Task3_Serial (EffPrio=2,IPC=Queue#41): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=21,T2=21,T3=33) | Blocked(T1_ipc=21,T2_ipc=21,T2_dly=42,T3_dly=32) | Pin1=ON
+[t=32537 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#42): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=21,T2=21,T3=33) | Blocked(T1_ipc=21,T2_ipc=21,T2_dly=42,T3_dly=33) | Pin1=ON
+[t=32553 ms] Task2_LedOff (EffPrio=3,IPC=Queue#42): xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms) | Runs(T1=21,T2=22,T3=33) | Blocked(T1_ipc=21,T2_ipc=21,T2_dly=42,T3_dly=33) | Pin1=OFF
+[t=33517 ms] Task3_Serial (EffPrio=2,IPC=Queue#42): UART Status Heartbeat (task-delay 1000ms) | Runs(T1=21,T2=22,T3=34) | Blocked(T1_ipc=22,T2_ipc=21,T2_dly=43,T3_dly=33) | Pin1=OFF
+[t=33570 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#43): xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms) | Runs(T1=22,T2=22,T3=34) | Blocked(T1_ipc=22,T2_ipc=21,T2_dly=44,T3_dly=34) | Pin1=ON
+[t=34086 ms] Task1_LedOn  (EffPrio=1,IPC=Queue#44): 500ms active wait done -> xQueueSend() & taskYIELD() | Runs(T1=22,T2=22,T3=34) | Blocked(T1_ipc=22,T2_ipc=22,T2_dly=44,T3_dly=34) | Pin1=ON

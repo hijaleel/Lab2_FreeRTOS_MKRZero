@@ -3,14 +3,16 @@
  * Lab 2: FreeRTOS on ATSAMD21G18A (Arduino MKR Zero / ARM Cortex-M0+)
  * Using pure CMSIS ("sam.h") without Arduino.h
  *
- * Question 4 - Kernel-Level Blocked-Task Tracking & Performance Investigation:
- *   - Implements FreeRTOS Debug/RunTime Trace Macros:
- *       1) traceBLOCKING_ON_QUEUE_RECEIVE(pxQueue) -> vTraceTaskBlockedOnMutex()
- *       2) traceTASK_DELAY()                       -> vTraceTaskBlockedOnDelay()
- *   - Implements FreeRTOS IDLE Hook:
- *       3) vApplicationIdleHook()
- *   - Compares Same Task Priorities (SCHEDULER_CASE = 0) vs.
- *     Distinct Task Priorities (SCHEDULER_CASE = 5).
+ * Question 5 - Inter-Task Communication (Message Queue & Semaphore vs. Mutex):
+ *   - Replaces the Mutex with either:
+ *       * SCHEDULER_CASE = 6 (Default): FreeRTOS Message Queue
+ *         (xQueueCreate / xQueueSend / xQueueReceive) passing a structured
+ *         LedMessage_t payload between Task 1 (LED ON) and Task 2 (LED OFF).
+ *       * SCHEDULER_CASE = 7: FreeRTOS Binary Semaphore
+ *         (xSemaphoreCreateBinary / xSemaphoreTake / xSemaphoreGive).
+ *   - Retains Question 4 Kernel Trace Macros (traceBLOCKING_ON_QUEUE_RECEIVE,
+ *     traceTASK_DELAY) and vApplicationIdleHook() for direct performance and
+ *     determinism comparison against the Mutex (SCHEDULER_CASE = 5).
  * ============================================================================
  */
 
@@ -22,13 +24,14 @@
 /* FreeRTOS Kernel Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 #include "semphr.h"
 
 /* -------------------------------------------------------------------------- */
-/* Select Active Test Case (0..5)                                             */
+/* Select Active Test Case (0..7, default = 6 for Question 5 Message Queue)   */
 /* -------------------------------------------------------------------------- */
 #ifndef SCHEDULER_CASE
-#define SCHEDULER_CASE 5
+#define SCHEDULER_CASE 6
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -38,6 +41,16 @@
 /* -------------------------------------------------------------------------- */
 #define PIN1_MASK           PORT_PA23        /* Header Pin 1 = PA23 (1UL << 23) */
 #define ONBOARD_LED_MASK    (1UL << 8)       /* Built-in LED = PB08 */
+
+/* -------------------------------------------------------------------------- */
+/* Question 5: Inter-Task Communication Message Structure (for Queue IPC)     */
+/* -------------------------------------------------------------------------- */
+typedef struct {
+    uint8_t    ucLedState;       /* 0 = LED OFF, 1 = LED ON */
+    uint8_t    ucSenderTaskId;   /* 0 = Init, 1 = Task1_LedOn, 2 = Task2_LedOff */
+    uint32_t   ulSequenceNum;    /* Monotonic IPC message sequence number */
+    TickType_t xTimestampTicks;  /* Kernel tick timestamp when message was sent */
+} LedMessage_t;
 
 /* -------------------------------------------------------------------------- */
 /* Task Priorities (Each task has its own priority determined by a const int) */
@@ -68,7 +81,7 @@
     const int PRIORITY_TASK_LED_OFF = 3;
     const int PRIORITY_TASK_SERIAL  = 2;
 #else
-    /* Distinct Priorities (Priority Inheritance Enabled): High=LedOff(3), Med=Serial(2), Low=LedOn(1) */
+    /* Cases 5, 6, 7: Distinct Priorities: High=LedOff(3), Med=Serial(2), Low=LedOn(1) */
     const int PRIORITY_TASK_LED_ON  = 1;
     const int PRIORITY_TASK_LED_OFF = 3;
     const int PRIORITY_TASK_SERIAL  = 2;
@@ -81,9 +94,10 @@
 #define STACK_SIZE_SERIAL       ( ( configSTACK_DEPTH_TYPE ) 256 )
 
 /* -------------------------------------------------------------------------- */
-/* FreeRTOS Synchronization Handles & Execution/Blocking Telemetry Counters   */
+/* FreeRTOS Synchronization / IPC Handles & Telemetry Counters                */
 /* -------------------------------------------------------------------------- */
 SemaphoreHandle_t xLedMutex = NULL;
+QueueHandle_t     xLedQueue = NULL;
 
 TaskHandle_t xHandleTaskLedOn   = NULL;
 TaskHandle_t xHandleTaskLedOff  = NULL;
@@ -93,15 +107,16 @@ TaskHandle_t xHandleTaskSerial  = NULL;
 volatile uint32_t ulTask1Count = 0;
 volatile uint32_t ulTask2Count = 0;
 volatile uint32_t ulTask3Count = 0;
+volatile uint32_t ulQueueMsgSeq = 0;
 
-/* Question 4: Kernel Trace Blocked-Task Counters */
-volatile uint32_t ulTask1BlockedMutex = 0;  /* Times Task 1 blocked waiting for xLedMutex */
-volatile uint32_t ulTask2BlockedMutex = 0;  /* Times Task 2 blocked waiting for xLedMutex */
+/* Question 4 & 5: Kernel Trace Blocked-Task Counters */
+volatile uint32_t ulTask1BlockedIPC   = 0;  /* Times Task 1 blocked on Mutex/Semaphore/Queue */
+volatile uint32_t ulTask2BlockedIPC   = 0;  /* Times Task 2 blocked on Mutex/Semaphore/Queue */
 volatile uint32_t ulTask2BlockedDelay = 0;  /* Times Task 2 blocked via vTaskDelay() */
 volatile uint32_t ulTask3BlockedDelay = 0;  /* Times Task 3 blocked via vTaskDelay() */
 volatile uint32_t ulTotalBlockedEvents = 0; /* Total kernel-tracked blocking transitions */
 
-/* Question 4: IDLE Hook Counter (increments when ALL application tasks are blocked) */
+/* IDLE Hook Counter (increments when ALL application tasks are blocked) */
 volatile uint32_t ulIdleHookCalls = 0;
 
 /* -------------------------------------------------------------------------- */
@@ -112,21 +127,22 @@ extern size_t usb_cdc_write(void *this_ptr, const uint8_t *buf, size_t len) __as
 extern bool usb_cdc_dtr(void *this_ptr) __asm__("_ZN7Serial_3dtrEv");
 
 /* -------------------------------------------------------------------------- */
-/* Question 4: Kernel Trace & Idle Hook Implementations                       */
+/* Kernel Trace & Idle Hook Implementations                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
  * @brief Invoked by FreeRTOS kernel macro traceBLOCKING_ON_QUEUE_RECEIVE(pxQueue)
- *        inside xQueueSemaphoreTake() whenever a task is about to enter the
- *        Blocked state because the mutex/semaphore is currently held.
+ *        whenever a task enters the Blocked state waiting for a Message Queue,
+ *        Binary Semaphore, or Mutex.
  */
 void vTraceTaskBlockedOnMutex(void *pxQueue) {
-    if ((SemaphoreHandle_t)pxQueue == xLedMutex) {
+    if ((pxQueue != NULL) &&
+        ((pxQueue == (void *)xLedMutex) || (pxQueue == (void *)xLedQueue))) {
         TaskHandle_t xCur = xTaskGetCurrentTaskHandle();
         if (xCur == xHandleTaskLedOn) {
-            ulTask1BlockedMutex++;
+            ulTask1BlockedIPC++;
         } else if (xCur == xHandleTaskLedOff) {
-            ulTask2BlockedMutex++;
+            ulTask2BlockedIPC++;
         }
         ulTotalBlockedEvents++;
     }
@@ -265,6 +281,14 @@ static void log_event(const char *task_tag, const char *event_msg) {
     uart_puts(task_tag);
     uart_puts(" (EffPrio=");
     uart_put_uint((uint32_t)uxEffPrio);
+#if (SCHEDULER_CASE == 6)
+    uart_puts(",IPC=Queue#");
+    uart_put_uint(ulQueueMsgSeq);
+#elif (SCHEDULER_CASE == 7) || (SCHEDULER_CASE == 2) || (SCHEDULER_CASE == 4)
+    uart_puts(",IPC=BinSem");
+#else
+    uart_puts(",IPC=Mutex");
+#endif
     uart_puts("): ");
     uart_puts(event_msg);
     uart_puts(" | Runs(T1=");
@@ -273,10 +297,10 @@ static void log_event(const char *task_tag, const char *event_msg) {
     uart_put_uint(ulTask2Count);
     uart_puts(",T3=");
     uart_put_uint(ulTask3Count);
-    uart_puts(") | Blocked(T1_mtx=");
-    uart_put_uint(ulTask1BlockedMutex);
-    uart_puts(",T2_mtx=");
-    uart_put_uint(ulTask2BlockedMutex);
+    uart_puts(") | Blocked(T1_ipc=");
+    uart_put_uint(ulTask1BlockedIPC);
+    uart_puts(",T2_ipc=");
+    uart_put_uint(ulTask2BlockedIPC);
     uart_puts(",T2_dly=");
     uart_put_uint(ulTask2BlockedDelay);
     uart_puts(",T3_dly=");
@@ -290,12 +314,37 @@ static void log_event(const char *task_tag, const char *event_msg) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * @brief Task 1: Turn Pin 1 ON -> Actively wait 0.5s -> Yield.
+ * @brief Task 1: Acquire IPC token (Message Queue or Semaphore/Mutex) ->
+ *        Turn Pin 1 ON -> Actively wait 0.5s -> Release IPC token & Yield.
  */
 void vTaskLedOn(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
+#if (SCHEDULER_CASE == 6)
+        LedMessage_t xRxMsg;
+        if (xQueueReceive(xLedQueue, &xRxMsg, portMAX_DELAY) == pdPASS) {
+            ulTask1Count++;
+            gpio_led_on();
+            log_event("Task1_LedOn ", "xQueueReceive() OK -> GPIO Pin 1 ON (active wait 500ms)");
+
+            /* Actively wait for 0.5s (500 ms) using CPU spin loop */
+            TickType_t xStartTick = xTaskGetTickCount();
+            const TickType_t xWaitTicks = pdMS_TO_TICKS(500);
+            while ((xTaskGetTickCount() - xStartTick) < xWaitTicks) {
+                __asm volatile("nop");
+            }
+
+            LedMessage_t xTxMsg;
+            xTxMsg.ucLedState      = 1U;
+            xTxMsg.ucSenderTaskId  = 1U;
+            xTxMsg.ulSequenceNum   = ++ulQueueMsgSeq;
+            xTxMsg.xTimestampTicks = xTaskGetTickCount();
+
+            log_event("Task1_LedOn ", "500ms active wait done -> xQueueSend() & taskYIELD()");
+            xQueueSend(xLedQueue, &xTxMsg, portMAX_DELAY);
+        }
+#else
         if (xSemaphoreTake(xLedMutex, portMAX_DELAY) == pdTRUE) {
             ulTask1Count++;
             gpio_led_on();
@@ -308,9 +357,10 @@ void vTaskLedOn(void *pvParameters) {
                 __asm volatile("nop");
             }
 
-            log_event("Task1_LedOn ", "500ms active wait done -> Give mutex & taskYIELD()");
+            log_event("Task1_LedOn ", "500ms active wait done -> Give token & taskYIELD()");
             xSemaphoreGive(xLedMutex);
         }
+#endif
 
         /* Yield the CPU */
         taskYIELD();
@@ -318,12 +368,32 @@ void vTaskLedOn(void *pvParameters) {
 }
 
 /**
- * @brief Task 2: Turn Pin 1 OFF -> Task-delay 1.0s.
+ * @brief Task 2: Acquire IPC token (Message Queue or Semaphore/Mutex) ->
+ *        Turn Pin 1 OFF -> Task-delay 1.0s -> Release IPC token.
  */
 void vTaskLedOff(void *pvParameters) {
     (void) pvParameters;
 
     for (;;) {
+#if (SCHEDULER_CASE == 6)
+        LedMessage_t xRxMsg;
+        if (xQueueReceive(xLedQueue, &xRxMsg, portMAX_DELAY) == pdPASS) {
+            ulTask2Count++;
+            gpio_led_off();
+            log_event("Task2_LedOff", "xQueueReceive() OK -> GPIO Pin 1 OFF (task-delay 1000ms)");
+
+            /* Task-delay for 1.0s (1000 ms) while keeping the LED OFF */
+            vTaskDelay(pdMS_TO_TICKS(1000));
+
+            LedMessage_t xTxMsg;
+            xTxMsg.ucLedState      = 0U;
+            xTxMsg.ucSenderTaskId  = 2U;
+            xTxMsg.ulSequenceNum   = ++ulQueueMsgSeq;
+            xTxMsg.xTimestampTicks = xTaskGetTickCount();
+
+            xQueueSend(xLedQueue, &xTxMsg, portMAX_DELAY);
+        }
+#else
         if (xSemaphoreTake(xLedMutex, portMAX_DELAY) == pdTRUE) {
             ulTask2Count++;
             gpio_led_off();
@@ -334,8 +404,9 @@ void vTaskLedOff(void *pvParameters) {
 
             xSemaphoreGive(xLedMutex);
         }
+#endif
 
-        /* Yield / short delay so other tasks can acquire the mutex */
+        /* Yield / short delay so other tasks can acquire the IPC token */
         #if (SCHEDULER_CASE == 0) || (SCHEDULER_CASE == 1)
         taskYIELD();
         #else
@@ -363,19 +434,41 @@ void vTaskSerialStatus(void *pvParameters) {
 /* Application Entry Point                                                    */
 /* -------------------------------------------------------------------------- */
 void app_init(void) {
+    BaseType_t xIpcReady = pdFALSE;
+
     gpio_init();
     uart_init(115200);
 
-#if (SCHEDULER_CASE == 2) || (SCHEDULER_CASE == 4)
+#if (SCHEDULER_CASE == 6)
+    /* Question 5: Create a 1-element Message Queue for inter-task communication */
+    xLedQueue = xQueueCreate(1, sizeof(LedMessage_t));
+    if (xLedQueue != NULL) {
+        LedMessage_t xInitMsg = {
+            .ucLedState      = 0U,
+            .ucSenderTaskId  = 0U,
+            .ulSequenceNum   = 0U,
+            .xTimestampTicks = 0U
+        };
+        if (xQueueSend(xLedQueue, &xInitMsg, 0) == pdPASS) {
+            xIpcReady = pdTRUE;
+        }
+    }
+#elif (SCHEDULER_CASE == 7) || (SCHEDULER_CASE == 2) || (SCHEDULER_CASE == 4)
+    /* Question 5 / Case (b): Create a Binary Semaphore (no priority inheritance) */
     xLedMutex = xSemaphoreCreateBinary();
     if (xLedMutex != NULL) {
         xSemaphoreGive(xLedMutex);
+        xIpcReady = pdTRUE;
     }
 #else
+    /* Standard Mutex with Priority Inheritance */
     xLedMutex = xSemaphoreCreateMutex();
+    if (xLedMutex != NULL) {
+        xIpcReady = pdTRUE;
+    }
 #endif
 
-    if (xLedMutex != NULL) {
+    if (xIpcReady == pdTRUE) {
         xTaskCreate(
             vTaskLedOn,
             "Task_LedOn",
